@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>6502 assembler and emulator</title>
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+  <header class="control-panel">
+    <button id="compileButton" onClick="compileCode();">Compile</button>
+    <button id="runButton" onClick="runBinary();">Run</button>
+    <button id="resetButton" onClick="reset();">Reset</button>
+    <button id="hexdumpButton" onClick="hexdump();">Hexdump</button>
+    <h1>6502 assembler and emulator</h1>
+    <select id="fileSelect" onChange="Load(this.options[this.selectedIndex].value)">
+      <option>Open project</option>
+      <option value="space-invaders.asm">space-invaders.asm</option>
+      <option value="chickshooter.asm">chickshooter.asm</option>
+      <option>acmedemo.asm</option>
+      <option>alive.asm</option>
+      <option>backandforth.asm</option>
+      <option>brickout.asm</option>
+      <option>byterun.asm</option>
+      <option>c64rle.asm</option>
+      <option>calculator.asm</option>
+      <option>colors.asm</option>
+      <option>compo-May07-1st.asm</option>
+      <option>compo-May07-2nd.asm</option>
+      <option>compo-May07-3rd.asm</option>
+      <option>demoscene.asm</option>
+      <option>disco.asm</option>
+      <option>fullscreenlogo.asm</option>
+      <option>gameoflife.asm</option>
+      <option>noise.asm</option>
+      <option>random.asm</option>
+      <option>rle.asm</option>
+      <option>rorshach.asm</option>
+      <option>screenpatterns.asm</option>
+      <option>selfmodify.asm</option>
+      <option>sierpinski.asm</option>
+      <option>sierpinski2.asm</option>
+      <option>skier.asm</option>
+      <option>snake6502.asm</option>
+      <option>softsprites.asm</option>
+      <option>spacer.asm</option>
+      <option>splashscreen.asm</option>
+      <option>starfield2d.asm</option>
+      <option>triangles.asm</option>
+      <option>zookeeper.asm</option>
+    </select>
+    <label>
+      <input type="checkbox" id="presentation" onClick="togglePresentationMode();"> Presentation Mode
+    </label>
+  </header>
+  <div class="debugger-panel">
+    <div class="minidebugger" id="md"></div>
+    <label>
+      <input type="checkbox" id="watch" onClick="toggleDebug();"> Realtime Debug
+    </label>
+    <label>
+      <input type="checkbox" id="binary" onClick="toggleBinaryMode();"> Binary
+    </label>
+    <hr>
+    <button value="Step" id="stepButton" onClick="debugExec();">Step</button>
+    <button value="Jump to.." id="gotoButton" onClick="gotoAddr();">Jump to ...</button>
+  </div>
+  <div class="messages-panel" id="messages"></div>
+  <div class="screen-panel">
+    <div class="screen" id="screen" onClick="toggleScreen();"></div>
+  </div>
+  <textarea class="code" id="code" onKeyPress="disableButtons();"></textarea>
+  <script type="text/javascript" src="assembler.js"></script>
+</body>
+</html>

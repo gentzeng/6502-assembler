@@ -1,0 +1,99 @@
+
+<html>
+<head>
+<link href="style.css" rel="stylesheet" type="text/css" />
+<title>Help</title>
+</head>
+<body>
+<p class="helphead">What is this?</p>
+<p class="helptext">
+6502asm.com is an online 6502 compiler and emulator written
+entirely in JavaScript.  The 6502 CPU was fitted into several 8-bit
+computers and gaming consoles in the 1980's, such as the Apple ][,
+Nintendo NES and many more.  If you have ever coded assembly on
+the C64 (which featured a 6510 CPU), then this should be a walk in the park
+for you.  I also firmly believe that this can be an excellent platform for
+learning assembly code.
+</p>
+
+<p class="helphead">Who made this?</p>
+<p class="helptext">
+The idea, design and code behind this website was done by Stian S&oslash;reng.
+</p>
+
+<p class="helphead">Compability</p>
+<p class="helptext">
+The development platform for this project was a 1.25GHz Mac Mini running MacOSX
+10.4.6 with Safari 2.0.3.  It should also work in Internet Explorer version
+6+, Opera 8+, and Firefox 1.0+.
+</p>
+
+<p class="helphead">Missing instructions</p>
+<p class="helptext">
+All but a few instructions from the 6502 are implemented.  Those left out
+are CLI, RTI and SEI - simply because interrupts are not supported (yet).  The
+commands will be compiled and executed, but have no effect.  For a complete
+list of all available instructions, see<br/>
+<a href="http://www.6502.org/tutorials/6502opcodes.html" target="_tuthelp" >http://www.6502.org/tutorials/6502opcodes.html</a>
+</p>
+
+<p class="helphead">Instruction timing and cycles</p>
+<p class="helptext">
+The emulator part of this project does not take timing or cycles in
+consideration - it simply tries to execute the code as fast as possible.
+
+<p class="helphead">Zero Page hack</p>
+<p class="helptext">
+On a typical 6502-based machine, you will find the ZP ranging from $00 through 
+$FF.  This is the case here as well, except the last two are
+<em>read-only</em>:  $FE is a random generator and $FF contains the ASCII
+code of the key pressed (or zero if none).  They are not truly RO, you
+<em>can</em> overwrite the values, but only until the next value is
+generated.
+</p>
+
+<p class="helphead">The screen and palette</p>
+<p class="helptext">
+The address space for the screen is from $200 (top left corner) to
+$5ff (lower right corner).  For your convenience the screen is  32 by 32
+pixels - 1024 in total.  Moving one line down is simply done by shifting
+five times to the left.  The palette is a direct rip-off from the C64,
+and the colours are as follows:<br />
+<br />
+<font color="#000000">Black</font> ($0)<br />
+<font color="#ffffff">White</font> ($1)<br />
+<font color="#880000">Red</font> ($2)<br />
+<font color="#aaffee">Cyan</font> ($3)<br />
+<font color="#cc44cc">Purple</font> ($4)<br />
+<font color="#00cc55">Green</font> ($5)<br />
+<font color="#0000aa">Blue</font> ($6)<br />
+<font color="#eeee77">Yellow</font> ($7)<br />
+<font color="#dd8855">Orange</font> ($8)<br />
+<font color="#664400">Brown</font> ($9)<br />
+<font color="#ff7777">Light red</font> ($a)<br />
+<font color="#333333">Dark gray</font> ($b)<br />
+<font color="#777777">Gray</font> ($c)<br />
+<font color="#aaff66">Light green</font> ($d)<br />
+<font color="#0088ff">Light blue</font> ($e)<br />
+<font color="#bbbbbb">Light gray</font> ($f)<br />
+<br />
+The colors on the screen are always ANDed by $f, so no matter what value you
+poke into the memory, you will get one of these colours.
+</p>
+
+<p class="helphead">I need some inspiration</p>
+<p class="helptext">
+I hope this will help:<br />
+<a href="http://www.slayradio.org/"><img src="http://www.slayradio.org/currently_playing.php/slayradio.png" border="0"></a>
+</p>
+
+<p class="helphead">It's slow!</p>
+<p class="helptext">
+Not as slow as it was a month ago.
+</p>
+
+<p class="helphead">It doesn't work / I noticed a bug</p>
+<p class="helptext">
+Send an email to <a href="mailto:6502asm@gmail.com">6502asm@gmail.com</a>.
+</body>
+</html>
