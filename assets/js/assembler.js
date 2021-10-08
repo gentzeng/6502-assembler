@@ -31,7 +31,7 @@ var palette = new Array(
   "#dd8855", "#664400", "#ff7777", "#333333",
   "#777777", "#aaff66", "#0088ff", "#bbbbbb" );
 
-var inst= new Array(
+var instructions = new Array(
 i00,  //00
 i01,  //01
 ierr, //02
@@ -1436,7 +1436,9 @@ function execute() {
   if( ! codeRunning ) return;
 
   memory[0xfe]=Math.floor( Math.random()*256 );
-  inst[popByte()]();
+  instruction = instructions[popByte()];
+  console.log(instruction.name);
+  instruction();
 
   if( (regPC == 0) || (!codeRunning) ) {
     clearInterval( myInterval );
