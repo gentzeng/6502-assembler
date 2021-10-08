@@ -82,7 +82,7 @@ class MemoryStack {
     return this.popByte() + (this.popByte() << 8);
   }
 }
-
+var BREAK_EXCEPTION = {};
 var MAX_MEM = ((32*32)-1);
 var codeCompiledOK = false;
 var regA = 0;
@@ -92,8 +92,7 @@ var regP = 0;
 var regPC = 0x600;
 var memoryStack = new MemoryStack(0x600);
 var runForever = false;
-var labelIndex = new Array();
-var labelPtr = 0;
+var labelAddresses = {};
 var codeRunning = false;
 var xmlhttp;
 var myInterval;
@@ -270,8 +269,8 @@ function updateDebugInfo() {
 function gotoAddr() {
   var input = prompt( "Enter address or label", "" );
   var addr = 0;
-  if( isInLabelIndex( input ) ) {
-    addr = getLabelAddress( input );
+  if( input in labelAddresses ) {
+    addr = labelAddresses[input];
   } else {
     if( input.match( new RegExp( /^0x[0-9a-f]{1,4}$/i ) ) ) {
       input = input.replace( /^0x/, "" );
@@ -313,7 +312,7 @@ function enableDebugger() {
  */
 
 function toggleDebug() {
-//  alert( "debug="+debug+" og codeRunning="+codeRunning );
+  // alert( "debug="+debug+" og codeRunning="+codeRunning );
   debug = !debug;
   if( debug ) {
     enableDebugger();
@@ -338,14 +337,13 @@ function togglePresentationMode() {
  *  disableButtons() - Disables the Run and Debug buttons when text is
  *                     altered in the code editor
  */
-
 function disableButtons() {
   document.getElementById( "runButton" ).disabled = true;
   document.getElementById( "hexdumpButton" ).disabled = true;
   document.getElementById( "fileSelect" ).disabled = false;
   document.getElementById( "compileButton" ).disabled = false;
   document.getElementById( "runButton" ).value = "Run";
-//  document.getElementById( "submitCode" ).disabled = true;
+  // document.getElementById( "submitCode" ).disabled = true;
   codeCompiledOK = false;
   codeRunning = false;
   document.getElementById( "code" ).focus();
@@ -357,7 +355,6 @@ function disableButtons() {
 /*
  *  Load() - Loads a file from server
  */
-
 function Load( file ) {
   reset();
   disableButtons();
@@ -420,33 +417,20 @@ function compileCode() {
   reset();
   document.getElementById( "messages" ).innerHTML = "";
 
-  var code = document.getElementById( "code" ).value;
+  let code = document.getElementById( "code" ).value;
   code += "\n\n";
-  lines = code.split( "\n" );
-  codeCompiledOK = true;
-  labelIndex = new Array();
-  labelPtr = 0;
+  let codeLines = code.split( "\n" );
 
-  printMessage( "Indexing labels.." );
+  labelAddresses = {};
 
-  defaultCodePC = regPC = 0x600;
-
-  for( xc=0; xc<lines.length; xc++ ) {
-    if( ! indexLabels( lines[xc] ) ) {
-      printMessage( "<b>Label already defined at line "+(xc+1)+":</b> "+lines[xc] );
-      return false;
-    }
-  }
-
-  str = "Found " + labelIndex.length + " label";
-  if( labelIndex.length != 1 ) str += "s";
-  printMessage( str + "." );
+  indexLabels(codeLines);
 
   defaultCodePC = regPC = 0x600;
   printMessage( "Compiling code.." );
 
-  for( x=0; x<lines.length; x++ ) {
-    if( ! compileLine( lines[x], x ) ) {
+  let codeCompiledOK = true;
+  for( let line_i = 0; line_i < codeLines.length; line_i++ ) {
+    if( ! compileLine( codeLines[line_i], line_i ) ) {
       codeCompiledOK = false;
       break;
     }
@@ -454,55 +438,70 @@ function compileCode() {
 
   if( codeLen == 0 ) {
     codeCompiledOK = false;
-    printMessage( "No code to run." );
+  }
+
+  if( ! codeCompiledOK ) {
+    if( codeLen == 0 ) {
+      printMessage( "No code to run." );
+    } else {
+      str = codeLines[x].replace( "<", "&lt;" ).replace( ">", "&gt;" );
+      printMessage( "<b>Syntax error line " + (x+1) + ": " + str + "</b>");
+    }
     document.getElementById( "runButton" ).disabled = true;
     document.getElementById( "compileButton" ).disabled = false;
     document.getElementById( "fileSelect" ).disabled = false;
     return;
   }
 
-  if( codeCompiledOK ) {
-    document.getElementById( "runButton" ).disabled = false;
-    document.getElementById( "hexdumpButton" ).disabled = false;
-    document.getElementById( "compileButton" ).disabled = true;
-    document.getElementById( "fileSelect" ).disabled = false;
-//    document.getElementById( "submitCode" ).disabled = false;
-    memoryStack.setElement(defaultCodePC, 0x00);
-  } else {
-    str = lines[x].replace( "<", "&lt;" ).replace( ">", "&gt;" );
-    printMessage( "<b>Syntax error line " + (x+1) + ": " + str + "</b>");
-    document.getElementById( "runButton" ).disabled = true;
-    document.getElementById( "compileButton" ).disabled = false;
-    document.getElementById( "fileSelect" ).disabled = false;
-    return;
-  }
+  document.getElementById( "runButton" ).disabled = false;
+  document.getElementById( "hexdumpButton" ).disabled = false;
+  document.getElementById( "compileButton" ).disabled = true;
+  document.getElementById( "fileSelect" ).disabled = false;
+  // document.getElementById( "submitCode" ).disabled = false;
+  memoryStack.setElement(defaultCodePC, 0x00);
 
   updateDisplayFull();
   printMessage( "Code compiled successfully, " + codeLen + " bytes." );
+  return;
 }
 
-/*
- *  indexLabels() - Pushes all labels to array.
- */
+function indexLabels(codeLines) {
+  printMessage( "Indexing labels.." );
+  defaultCodePC = regPC = 0x600;
 
-function indexLabels( input ) {
-  input = removeComments(input);
-  input = trimLine(input);
+  codeLines.forEach((line, line_number) => {
+    indexLabel(line, line_number)
+  });
+
+  labelAddressesCount = Object.entries(labelAddresses).length;
+  str = "Found " + labelAddressesCount + " label";
+  str = labelAddressesCount == 1 ? str += "." : str += "s.";
+  printMessage(str);
+  defaultCodePC = regPC = 0x600;
+}
+
+function indexLabel( line, line_number ) {
+  line = removeComments(line);
+  line = trimLine(line);
 
   // Figure out how many bytes this instuction takes
   thisPC = defaultCodePC;
 
   codeLen = 0;
-//  defaultCodePC = 0x600;
-  compileLine( input );
+  // defaultCodePC = 0x600;
+  compileLine( line );
   regPC += codeLen;
 
   // Find command or label
-  if( input.match( new RegExp( /^\w+:/ ) ) ) {
-    label = input.replace( new RegExp( /(^\w+):.*$/ ), "$1" );
-    return pushLabel( label + "|" + thisPC );
+  if( line.match( new RegExp( /^\w+:/ ) ) ) {
+    label = line.replace( new RegExp( /(^\w+):.*$/ ), "$1" );
+    if ( label in labelAddresses ) {
+      printMessage( "<b>Label already defined at line " + (line_number+1) + ":</b> " + line );
+      return;
+    }
+    labelAddresses[label] = thisPC;
   }
-  return true;
+  return;
 }
 
 function removeComments(input) {
@@ -514,68 +513,32 @@ function trimLine(input) {
   input = input.replace( new RegExp( /\s+$/ ), "" );
   return input
 }
-/*
- *  pushLabel() - Push label to array. Return false if label already exists.
- */
-function pushLabel( name ) {
-  if( isInLabelIndex( name ) ) {
-    return false;
-  }
-  labelIndex[labelPtr++] = name + "|";
-  return true;
-}
-
-/*
- *  isInLabelIndex() - Returns true if label exists.
- */
-function isInLabelIndex( name ) {
-  for( m=0; m<labelIndex.length; m++ ) {
-    nameAndAddr = labelIndex[m].split( "|" );
-    if( name == nameAndAddr[0] ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function getLabelAddress( name ) {
-  for( i=0; i<labelIndex.length; i++ ) {
-    nameAndAddr = labelIndex[i].split( "|" );
-    if( name == nameAndAddr[0] ) {
-      return nameAndAddr[1];
-    }
-  }
-  return -1;
-}
 
 /*
  *  compileLine()
  *  Compiles one line of code.  Returns true if it compiled successfully,
  *  false otherwise.
  */
-
 function compileLine( input, lineno ) {
   input = removeComments(input);
   input = trimLine(input);
+  let command = "";
 
   // Find command or label
-
   if( input.match( new RegExp( /^\w+:/ ) ) ) {
     label = input.replace( new RegExp( /(^\w+):.*$/ ), "$1" );
     if( input.match( new RegExp( /^\w+:[\s]*\w+.*$/ ) ) ) {
       input = input.replace( new RegExp( /^\w+:[\s]*(.*)$/ ), "$1" );
       command = input.replace( new RegExp( /^(\w+).*$/ ), "$1" );
-    } else {
-      command = "";
     }
   } else {
     command = input.replace( new RegExp( /^(\w+).*$/ ), "$1" );
   }
 
   // Blank line?  Return.
-
-  if( command == "" )
+  if( command == "" ) {
     return true;
+  }
 
   command = command.toUpperCase();
 
@@ -614,7 +577,7 @@ function compileLine( input, lineno ) {
 
   for( o=0; o<Opcodes.length; o++ ) {
     if( Opcodes[o][0] == command ) {
-      if( 
+      if(
           checkSingle(param, Opcodes[o][10])
         || checkImmediate(param, Opcodes[o][1])
         || checkZeroPage(param, Opcodes[o][2])
@@ -628,7 +591,7 @@ function compileLine( input, lineno ) {
         || checkBranch(param, Opcodes[o][11])
       ) {
         return true;
-      }   
+      }
     }
   }
   return false; // Unknown opcode
@@ -665,11 +628,11 @@ function DCB( param ) {
 function checkBranch( param, opcode ) {
   if( opcode == 0x00 ) {
     return false;
-  }    
+  }
 
   addr = -1;
   if( param.match( /\w+/ ) ) {
-    addr = getLabelAddress( param );
+    addr = labelAddresses[param];
   }
   if( addr == -1 ) {
     memoryStack.pushWord( 0x00 );
@@ -712,8 +675,8 @@ function checkImmediate( param, opcode ) {
     label = param.replace( new RegExp( /^#[<>](\w+)$/ ), "$1" );
     hilo = param.replace( new RegExp( /^#([<>]).*$/ ), "$1" );
     memoryStack.pushByte( opcode );
-    if( isInLabelIndex( label ) ) {
-      addr = getLabelAddress( label );
+    if( label in labelAddresses ) {
+      addr = labelAddresses[label];
       switch( hilo ) {
         case ">":
           memoryStack.pushByte( (addr >> 8) & 0xff );
@@ -824,8 +787,8 @@ function checkAbsoluteX( param, opcode ) {
   if( param.match( /^\w+,X$/i ) ) {
     param = param.replace( new RegExp( /,X$/i ), "" );
     memoryStack.pushByte( opcode );
-    if( isInLabelIndex( param ) ) {
-      addr = getLabelAddress( param );
+    if( param in labelAddresses ) {
+      addr = labelAddresses[param];
       if( addr < 0 || addr > 0xffff ) {
         return false;
       }
@@ -860,8 +823,8 @@ function checkAbsoluteY( param, opcode ) {
   if( param.match( /^\w+,Y$/i ) ) {
     param = param.replace( new RegExp( /,Y$/i ), "" );
     memoryStack.pushByte( opcode );
-    if( isInLabelIndex( param ) ) {
-      addr = getLabelAddress( param );
+    if( param in labelAddresses ) {
+      addr = labelAddresses[param];
       if( addr < 0 || addr > 0xffff ) {
         return false;
       }
@@ -942,8 +905,8 @@ function checkAbsolute( param, opcode ) {
   }
   // it could be a label too..
   if( param.match( /^\w+$/ ) ) {
-    if( isInLabelIndex( param ) ) {
-      addr = getLabelAddress( param );
+    if( param in labelAddresses ) {
+      addr = labelAddresses[param];
       if( addr < 0 || addr > 0xffff ) {
         return false;
       }
