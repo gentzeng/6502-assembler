@@ -6,12 +6,12 @@
 </head>
 <body>
   <header class="control-panel">
-    <button id="compileButton" onClick="compileCode();">Compile</button>
-    <button id="runButton" onClick="runBinary();">Run</button>
-    <button id="resetButton" onClick="reset();">Reset</button>
-    <button id="hexdumpButton" onClick="hexdump();">Hexdump</button>
+    <button id="compileButton">Compile</button>
+    <button id="runButton">Run</button>
+    <button id="resetButton">Reset</button>
+    <button id="hexDumpButton">Hexdump</button>
     <h1>6502 assembler and emulator</h1>
-    <select id="fileSelect" onChange="Load(this.options[this.selectedIndex].value)">
+    <select id="fileSelect">
       <option>Open project</option>
       <option value="space-invaders.asm">space-invaders.asm</option>
       <option value="chickshooter.asm">chickshooter.asm</option>
@@ -48,26 +48,28 @@
       <option>zookeeper.asm</option>
     </select>
     <label>
-      <input type="checkbox" id="presentation" onClick="togglePresentationMode();"> Presentation Mode
+      <input type="checkbox" id="presentationCheckbox"> Presentation Mode
     </label>
   </header>
   <div class="debugger-panel">
     <div class="minidebugger" id="md"></div>
     <label>
-      <input type="checkbox" id="watch" onClick="toggleDebug();"> Realtime Debug
+      <input type="checkbox" id="realTimeDebugCheckbox"> Realtime Debug
     </label>
     <label>
-      <input type="checkbox" id="binary" onClick="toggleBinaryMode();"> Binary
+      <input type="checkbox" id="binaryCheckbox"> Binary
     </label>
     <hr>
-    <button value="Step" id="stepButton" onClick="debugExec();">Step</button>
-    <button value="Jump to.." id="gotoButton" onClick="gotoAddr();">Jump to ...</button>
+    <button value="Step" id="stepButton">Step</button>
+    <button value="Jump to.." id="gotoButton">Jump to ...</button>
   </div>
   <div class="messages-panel" id="messages"></div>
   <div class="screen-panel">
-    <div class="screen" id="screen" onClick="toggleScreen();"></div>
+    <div class="screen" id="screen"></div>
   </div>
-  <textarea class="code" id="code" onKeyPress="disableButtons();"></textarea>
-  <script type="text/javascript" src="assets/js/assembler.js"></script>
+  <div class="code-area">
+    <!-- <textarea class="code" id="code"></textarea> -->
+  </div>
+  <script type="text/javascript" src="assets/js/assembler.bundle.js"></script>
 </body>
 </html>
