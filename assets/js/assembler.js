@@ -1,32 +1,19 @@
+import { Compiler, Command } from "./compiler";
+import { fmtToHex, getUpperByte, getLowerByte } from "./helper";
+import { ByteEntry, OpCodeByteEntry } from "./memory";
+
+import { printMessage, resetMessageWindow } from "./message";
+import { instructions } from "./instructions";
+
 /*
  *  keyPress() - Store keycode in ZP $ff
  */
-import {
-  Compiler,
-  Command
-} from "./compiler"
-import {
-  fmtToHex,
-  getUpperByte,
-  getLowerByte,
-} from "./helper"
-import {
-  ByteEntry,
-  OpCodeByteEntry
-} from "./memory"
-
-import {printMessage} from "./message"
-import {
-  instructions,
-} from "./instructions"
-
-
 export function keyPress(e) {
   if (typeof window.event != "undefined") {
     e = window.event;
   }
   if (e.type == "keypress") {
-    exports.memory.writeByte(0xff, new ByteEntry(e.which));
+    exports.memory.writeByte(0xff, new ByteEntry(e.which, 0xff));
   }
 }
 
@@ -64,57 +51,49 @@ export function toggleBinaryMode() {
 }
 
 export function togglePresentationMode() {
+  let button = $("#largeModeButton");
+  if (button.html() === "Large Mode") {
+    button.html("Normal Mode");
+  } else if (button.html() === "Normal Mode") {
+    button.html("Large Mode");
+  }
   $("body").toggleClass("presentation-mode");
 }
 
-/*
- *  disableButtons() - Disables the Run and Debug buttons when text is
- *                     altered in the code editor
- */
-export function disableButtons() {
-  exports.codeRunning = false;
-  clearInterval(exports.myInterval);
-  $("#runButton").prop("disabled", true);
-  $("#hexDumpButton").prop("disabled", true);
-  $("#fileSelect").prop("disabled", false);
-  $("#compileButton").prop("disabled", false);
-  $("#runButton").html("Run");
-  $("#code").focus();
-  $("#stepButton").prop("disabled", true);
-  $("#gotoButton").prop("disabled", true);
+export function toggleIllegalOpCode() {
+  exports.allowIllegalOpcode = !exports.allowIllegalOpcode;
 }
 
 /*
  *  Load() - Loads a file from server
  */
-export function Load({file}={}) {
-  console.log("loading")
+export function Load({ file } = {}) {
+  exports.codeRunning = false;
+  clearInterval(exports.myInterval);
+
   resetEverything();
-  disableButtons();
+  resetMessageWindow();
   $("#code").value = "Loading, please wait ...";
   $("#compileButton").prop("disabled", true);
-  let xmlhttp = new XMLHttpRequest();
-  xmlhttp.onreadystatechange = FileLoaded;
-  xmlhttp.open("GET", "assets/js/examples/" + file);
-  xmlhttp.send(null);
-  exports.debuggeR.disable();
-
-  function FileLoaded() {
-    if (xmlhttp.readyState == 4) {
-      if (xmlhttp.status == 200) {
-        $("#code").val(xmlhttp.responseText);
+  $.ajax({
+    url: "./assets/js/examples/" + file,
+    success: function (data, textStatus, _) {
+      if (textStatus == 200) {
+        $("#code").val(data);
         $("#compileButton").prop("disabled", false);
       }
-    }
-  }
+    },
+  });
+  exports.debuggeR.disable();
 }
 
 /*
- *  resetEverything() - Reset CPU and memory.
+ *  resetEverything() - Reset CPU, memory and html (partly).
  */
 export function resetEverything() {
+  exports.compiler = null;
+  exports.error = false;
   exports.codeRunning = false;
-  $("#messages").html("");
   exports.display.reset();
   exports.memory.reset(); // clear ZP, stack
 
@@ -124,25 +103,50 @@ export function resetEverything() {
   exports.instructionCounter = 0;
 
   exports.debuggeR.updateInfo();
+
+  $("#code").focus();
+  $("#runButton").prop("disabled", true);
+  $("#runButton").html("Run");
+  $("#compileButton").prop("disabled", false);
+  $("#fileSelect").prop("disabled", false);
+  $("#stepButton").prop("disabled", true);
+  $("#gotoButton").prop("disabled", true);
 }
 
 export function compileCode() {
   resetEverything();
+  resetMessageWindow();
 
-  let compiler = new Compiler(exports.editor.state.doc.toString())
-    .preprocessCode()
-    .scanLabels()
-    .compile()
-    .insertLabelAddressesToMemory();
+  let codeToCompile = exports.editor.state.doc.toString();
+  if (codeToCompile === "") {
+    resetEverything();
+    printMessage("<b>No code in editor.<\b>");
+    return;
+  }
+
+  let compiler = new Compiler(codeToCompile).preprocessCode();
+  exports.compiler = compiler;
+
+  if (compiler.noCode()) {
+    resetEverything();
+    printMessage("<b>No code to run.<\b>");
+    return;
+  }
+
+  compiler.scanLabels().compile().insertLabelAddressesToMemory();
+
+  if (exports.error) {
+    resetEverything();
+    return true;
+  }
 
   exports.memory = compiler.memory;
 
-  if (compiler.noCode()) {
-    printMessage("<b>No code to run.<\b>");
-    setGuiNoCode();
-  } else {
-    setGuiCompileSuccess();
+  if (exports.debug) {
+    console.log(exports.memory.toString());
   }
+  setGuiCompileSuccess();
+
   exports.labelAddresses = compiler.labelAddresses;
 
   exports.display.updateFull();
@@ -150,12 +154,6 @@ export function compileCode() {
   return;
 
   // helper
-  function setGuiNoCode() {
-    $("#runButton").prop("disabled", true);
-    $("#compileButton").prop("disabled", false);
-    $("#fileSelect").prop("disabled", false);
-    return;
-  }
   function setGuiCompileSuccess() {
     $("#runButton").prop("disabled", false);
     $("#compileButton").prop("disabled", true);
@@ -170,30 +168,35 @@ export function compileCode() {
  */
 
 export function hexDump() {
-  let w = window.open('', 'hexDump', 'width=500,height=300,resizable=yes,scrollbars=yes,toolbar=no,location=no,menubar=no,status=no' );
+  let w = window.open(
+    "",
+    "hexDump",
+    "width=600,height=300,resizable=yes,scrollbars=yes,toolbar=no,location=no,menubar=no,status=no"
+  );
 
   let html = "<html><head>";
-  html += "<link href='style.css' rel='stylesheet' type='text/css' />";
+  html += "<meta charset='utf-8'";
+  html +=
+    "<link href='assets/css/style.css' rel='stylesheet' type='text/css' />";
+  html +=
+    "<link href='assets/css/bootstrap.min.css' rel='stylesheet' type='text/css' />";
   html += "<title>hexDump</title></head><body>";
-  html += "<code>";
-  let x;
-  for(x = 0; x < exports.memory.codeLen; x++) {
-    if ((x & 15) == 0) {
-      html += "<br/> ";
-      n = (exports.memory.size + x);
-      html += fmtToHex(getUpperByte((n)));
-      html += fmtToHex(getLowerByte(n));
-      html += ": ";
-    }
-    html += fmtToHex(exports.memory.readByte(exports.memory.size + x).value);
-    if (x & 1) {
-      html += " ";
-    }
-  }
-  if (x & 1) {
-    html += "-- [END]";
-  }
-  html += "</code></body></html>";
+  html += "<div class='container'>";
+  html += "<div class='row d-flex justify-content-center'>";
+  html += "<div class='col vh-100 overflow-auto'>";
+  html += "<h3>HexDump</h3>";
+  html += "<div class='dumpHTML'>";
+
+  html += exports.memory.dumpHTML();
+
+  html += "-- [END]";
+  html += "</div>";
+  html += "</div>";
+  html += "</div>";
+  html += "</div>";
+  html +=
+    "<script type='text/javascript' src='assets/js/bootstrap.bundle.min.js'></script>";
+  html += "</body></html>";
   w.document.write(html);
   w.document.close();
 }
@@ -224,15 +227,15 @@ export function runBinary() {
       $("#gotoButton").prop("disabled", false);
     }
     exports.codeRunning = true;
-    exports.myInterval = setInterval(
-      (_) => {multiExecute(32);},
-    1);
+    exports.myInterval = setInterval((_) => {
+      multiExecute();
+    }, 1);
   }
 }
 
-function multiExecute(steps) {
-  if (! exports.debug) {
-    for(let w = 0; w < steps; w++) {
+function multiExecute() {
+  if (!exports.debug) {
+    for (let w = 0; w < exports.steps; w++) {
       executeInstruction();
     }
   }
@@ -242,43 +245,38 @@ function multiExecute(steps) {
  *  executeInstruction() - Executes one instruction. This is the main part of the CPU emulator.
  */
 export function executeInstruction() {
-  if (! exports.codeRunning) {
+  if (!exports.codeRunning) {
     return;
   }
 
   let randomByte = Math.floor(Math.random() * 0x100); // 0x100 = 256
-  exports.memory.writeByte(0xfe, new ByteEntry(randomByte)); // what does this do?
+  exports.memory.writeByte(0xfe, new ByteEntry(randomByte, 0xfe)); // what does this do?
 
   let byteEntry = exports.memory.readByte(exports.reg.PC);
-  let opCode = byteEntry.value;
-  let lineNumber = "       ";
-  if (byteEntry instanceof OpCodeByteEntry) {
-    lineNumber = " [" + byteEntry.lineNumber.toString().padStart(4, " ") + "]";
-
-    if (exports.debug) {
-      highlightCodeLine(byteEntry.lineNumber);
-    }
-
-
+  if (exports.debug) {
+    highlightCodeLine(byteEntry.lineNumber);
   }
-
+  let opCode = byteEntry.value;
+  let lineNumber =
+    " [" + byteEntry.lineNumber.toString().padStart(4, " ") + "]";
 
   let instruction = instructions[opCode];
-  let name = exports.instructionCounter.toString().padStart(6, " ")
-    + "  "
-    + instruction.name
-    + "/"
-    + Command.getOpCodeName(opCode)
-    + lineNumber;
+  let name =
+    exports.instructionCounter.toString().padStart(6, " ") +
+    "  " +
+    instruction.name +
+    "/" +
+    Command.getOpCodeName(opCode) +
+    lineNumber;
   exports.instructionCounter++; //advance instruction counter
 
   exports.reg.PC++; //advance programm counter
-  if (! (byteEntry instanceof OpCodeByteEntry)) {
+  if (!(byteEntry instanceof OpCodeByteEntry)) {
     console.warn("Using normal ByteEntry as OpCodeByteEntry: " + name);
   }
   let addr = instruction(name);
   if (isDisplayPixel(addr)) {
-    exports.display.updatePixel(addr)
+    exports.display.updatePixel(addr);
   }
 
   runEnd();
@@ -289,20 +287,20 @@ export function executeInstruction() {
     let lineText = line.text;
     exports.editor.dispatch({
       changes: {
-        from : line.from,
+        from: line.from,
         to: line.to,
-        insert: ">>> " + lineText + " <<<"
-      }
+        insert: ">>> " + lineText + " <<<",
+      },
     });
 
     if (exports.started) {
       let lastLine = exports.editor.state.doc.line(exports.lastLineNumber);
       exports.editor.dispatch({
         changes: {
-          from : lastLine.from,
+          from: lastLine.from,
           to: lastLine.to,
-          insert: exports.lastLineText
-        }
+          insert: exports.lastLineText,
+        },
       });
     } else {
       exports.started = true;
@@ -315,14 +313,14 @@ export function executeInstruction() {
   }
 
   function isDisplayPixel(addr) {
-    if ((addr >= 0x200) && (addr <= 0x5ff)) {
+    if (addr >= 0x200 && addr <= 0x5ff) {
       return true;
     }
     return false;
   }
 
-  function runEnd () {
-    if ((exports.reg.PC == 0) || (!exports.codeRunning)) {
+  function runEnd() {
+    if (exports.reg.PC == 0 || !exports.codeRunning) {
       clearInterval(exports.myInterval);
       printMessage("Program end at PC=$" + fmtToHex(exports.reg.PC - 1));
       exports.codeRunning = false;
@@ -345,8 +343,8 @@ export function debugExecHolding(btn, start, speedup) {
   $(btn).mousedown(repeat);
   $(btn).mouseup(clearTimeoutT);
 
-  function repeat () {
-    if (! exports.codeRunning) {
+  function repeat() {
+    if (!exports.codeRunning) {
       return;
     }
     if (restart) {
@@ -364,8 +362,8 @@ export function debugExecHolding(btn, start, speedup) {
     exports.debuggeR.updateInfo();
   }
 
-  function clearTimeoutT () {
+  function clearTimeoutT() {
     restart = true;
-    clearTimeout(timeout)
+    clearTimeout(timeout);
   }
-};
+}

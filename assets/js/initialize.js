@@ -8,12 +8,15 @@
  *
  */
 
-import "jquery"
-import {EditorState, EditorView, basicSetup} from "@codemirror/basic-setup"
-import {javascript} from "@codemirror/lang-javascript"
-import {Display} from "./display"
-import {Debugger} from "./debugger"
-import {Flags} from "./flags"
+import "jquery";
+import { EditorState, EditorView, basicSetup } from "@codemirror/basic-setup";
+import { StreamLanguage } from "@codemirror/stream-parser";
+import { gas } from "@codemirror/legacy-modes/mode/gas";
+import { foldGutter } from "@codemirror/fold";
+import { Display } from "./display";
+import { Debugger } from "./debugger";
+import { resetMessageWindow } from "./message";
+import { Flags } from "./flags";
 import {
   compileCode,
   runBinary,
@@ -23,14 +26,15 @@ import {
   toggleBinaryMode,
   toggleScreenSize,
   togglePresentationMode,
-  disableButtons,
+  toggleIllegalOpCode,
   Load,
   keyPress,
   debugExecHolding,
-} from "./assembler"
+} from "./assembler";
 
 export var test; // hack to initialize variables spanning over modules
 
+exports.compiler = null;
 exports.labelAddresses;
 exports.codeRunning = false;
 exports.myInterval;
@@ -40,47 +44,74 @@ exports.debug = false;
 exports.flags = new Flags();
 exports.instructionCounter = 0;
 exports.memory = {
-  reset : function() {return;},
-  regSP : 0x0,
+  reset: function () {
+    return;
+  },
+  regSP: 0x0,
 };
 exports.reg = {
-  X : 0x0, // register/index X
-  Y : 0x0, // register/index Y
-  PC : 0x600, // program counter
-}
+  X: 0x0, // register/index X
+  Y: 0x0, // register/index Y
+  PC: 0x600, // program counter
+};
+
+exports.error = false;
+exports.addressLineNumbers = {};
 
 exports.lastLineText = "";
 exports.lastLineNumber = 0;
 exports.started = false;
 
+exports.allowIllegalOpcode;
+
 exports.editor = new EditorView({
   state: EditorState.create({
-    extensions: [basicSetup, javascript()]
+    extensions: [basicSetup, StreamLanguage.define(gas), foldGutter()],
   }),
-})
+});
 
 $(".code-area").append(exports.editor.dom);
 
-$("#compileButton").prop("disabled", false);
-$("#runButton").prop("disabled", true);
+$("#realTimeDebugCheckbox").click(
+  exports.debuggeR.toggle.bind(exports.debuggeR)
+);
+$("#binaryCheckbox").click(toggleBinaryMode);
+$("#screen").click(toggleScreenSize);
+$("#illegalOpCodeCheckbox").click(toggleIllegalOpCode);
+
+// $("#code").keypress(disableButtons);
+document.addEventListener("keypress", keyPress, true);
+
+$("#compileButton").click(compileCode);
+$("#runButton").click(runBinary);
+$("#resetButton").click((_) => {
+  resetEverything();
+  resetMessageWindow();
+});
+$("#hexDumpButton").click(hexDump);
+$("#largeModeButton").click(togglePresentationMode);
+$("#fileSelect").change((event) => Load({ file: event.target.value }));
+$("#gotoButton").click(gotoAddr);
+
+$("#realTimeDebugCheckbox").prop("checked", false);
+$("#binaryCheckbox").prop("checked", false);
+$("#illegalOpCodeCheckbox").prop("checked", false);
+
+$("#largeModeButton").prop("disabled", false);
+
 $("#hexDumpButton").prop("disabled", true);
 $("#resetButton").prop("disabled", false);
 $("#stepButton").prop("disabled", true);
 $("#gotoButton").prop("disabled", true);
-$("#fileSelect").prop("disabled", false);
-$("#compileButton").click(compileCode);
-$("#runButton").click(runBinary);
-$("#hexDumpButton").click(hexDump);
-$("#resetButton").click(resetEverything);
-$("#gotoButton").click(gotoAddr);
-$("#realTimeDebugCheckbox").click(exports.debuggeR.toggle.bind(exports.debuggeR));
-$("#binaryCheckbox").click(toggleBinaryMode);
-$("#screen").click(toggleScreenSize);
-$("#fileSelect").change((event) => Load({file : event.target.value}));
-$("#presentationCheckbox").change(togglePresentationMode);
-$("#code").keypress(disableButtons);
-document.addEventListener("keypress", keyPress, true);
 
 debugExecHolding("#stepButton", 600, 1.25);
 
 resetEverything();
+resetMessageWindow();
+let slider = $("#stepsSlider");
+slider.val(5);
+
+exports.steps = 2 ** 5;
+slider.on("input", function () {
+  exports.steps = 2 ** this.value;
+});

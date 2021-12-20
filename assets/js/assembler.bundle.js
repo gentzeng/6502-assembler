@@ -16,6 +16,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 */
 	( function( global, factory ) {
 
+		"use strict";
+
 		if ( typeof module === "object" && typeof module.exports === "object" ) {
 
 			// For CommonJS and CommonJS-like environments where a proper `window`
@@ -40,13 +42,21 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	// Pass this if window is not defined yet
 	} )( typeof window !== "undefined" ? window : undefined, function( window, noGlobal ) {
 
+	// Edge <= 12 - 13+, Firefox <=18 - 45+, IE 10 - 11, Safari 5.1 - 9+, iOS 6 - 9.1
+	// throw exceptions when non-strict code (e.g., ASP.NET 4.5) accesses strict mode
+	// arguments.callee.caller (trac-13335). But as of jQuery 3.0 (2016), strict mode should be common
+	// enough that all such attempts are guarded in a try block.
+	"use strict";
+
 	var arr = [];
 
 	var getProto = Object.getPrototypeOf;
 
 	var slice = arr.slice;
 
-	var flat = function( array ) {
+	var flat = arr.flat ? function( array ) {
+		return arr.flat.call( array );
+	} : function( array ) {
 		return arr.concat.apply( [], array );
 	};
 
@@ -21766,6 +21776,38 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    ignoreEvent() { return false; }
 	}
 
+	const plugin = /*@__PURE__*/ViewPlugin.fromClass(class {
+	    constructor(view) {
+	        this.height = -1;
+	        this.measure = {
+	            read: view => Math.max(0, view.scrollDOM.clientHeight - view.defaultLineHeight),
+	            write: (value, view) => {
+	                if (Math.abs(value - this.height) > 1) {
+	                    this.height = value;
+	                    view.contentDOM.style.paddingBottom = value + "px";
+	                }
+	            }
+	        };
+	        view.requestMeasure(this.measure);
+	    }
+	    update(update) {
+	        if (update.geometryChanged)
+	            update.view.requestMeasure(this.measure);
+	    }
+	});
+	/**
+	Returns a plugin that makes sure the content has a bottom margin
+	equivalent to the height of the editor, minus one line height, so
+	that every line in the document can be scrolled to the top of the
+	editor.
+
+	This is only meaningful when the editor is scrollable, and should
+	not be enabled in editors that take the size of their content.
+	*/
+	function scrollPastEnd() {
+	    return plugin;
+	}
+
 	/**
 	Mark lines that have a cursor on them with the `"cm-activeLine"`
 	DOM class.
@@ -21798,6 +21840,43 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}, {
 	    decorations: v => v.decorations
 	});
+
+	class Placeholder extends WidgetType {
+	    constructor(content) {
+	        super();
+	        this.content = content;
+	    }
+	    toDOM() {
+	        let wrap = document.createElement("span");
+	        wrap.className = "cm-placeholder";
+	        wrap.style.pointerEvents = "none";
+	        wrap.appendChild(typeof this.content == "string" ? document.createTextNode(this.content) : this.content);
+	        if (typeof this.content == "string")
+	            wrap.setAttribute("aria-label", "placeholder " + this.content);
+	        else
+	            wrap.setAttribute("aria-hidden", "true");
+	        return wrap;
+	    }
+	    ignoreEvent() { return false; }
+	}
+	/**
+	Extension that enables a placeholder—a piece of example content
+	to show when the editor is empty.
+	*/
+	function placeholder(content) {
+	    return ViewPlugin.fromClass(class {
+	        constructor(view) {
+	            this.view = view;
+	            this.placeholder = Decoration.set([Decoration.widget({ widget: new Placeholder(content), side: 1 }).range(0)]);
+	        }
+	        get decorations() { return this.view.state.doc.length ? Decoration.none : this.placeholder; }
+	    }, { decorations: v => v.decorations });
+	}
+
+	/**
+	@internal
+	*/
+	const __test = { HeightMap, HeightOracle, MeasuredHeights, QueryType, ChangedRange, computeOrder, moveVisually };
 
 	const fromHistory = /*@__PURE__*/Annotation.define();
 	/**
@@ -21880,6 +21959,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        })
 	    ];
 	}
+	/**
+	The state field used to store the history data. Should probably
+	only be used when you want to
+	[serialize](https://codemirror.net/6/docs/ref/#state.EditorState.toJSON) or
+	[deserialize](https://codemirror.net/6/docs/ref/#state.EditorState^fromJSON) state objects in a way
+	that preserves history.
+	*/
+	const historyField = historyField_;
 	function cmd(side, selection) {
 	    return function ({ state, dispatch }) {
 	        let historyState = state.field(historyField_, false);
@@ -21910,6 +21997,23 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Redo a selection change.
 	*/
 	const redoSelection = /*@__PURE__*/cmd(1 /* Undone */, true);
+	function depth(side) {
+	    return function (state) {
+	        let histState = state.field(historyField_, false);
+	        if (!histState)
+	            return 0;
+	        let branch = side == 0 /* Done */ ? histState.done : histState.undone;
+	        return branch.length - (branch.length && !branch[0].changes ? 1 : 0);
+	    };
+	}
+	/**
+	The amount of undoable change events available in a given state.
+	*/
+	const undoDepth = /*@__PURE__*/depth(0 /* Done */);
+	/**
+	The amount of redoable change events available in a given state.
+	*/
+	const redoDepth = /*@__PURE__*/depth(1 /* Undone */);
 	// History events store groups of changes or effects that need to be
 	// undone/redone together.
 	class HistEvent {
@@ -22194,6 +22298,28 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	/// node, with another tree. This is useful to include trees from
 	/// different languages.
 	NodeProp.mounted = new NodeProp({ perNode: true });
+	/// A mounted tree, which can be [stored](#common.NodeProp^mounted) on
+	/// a tree node to indicate that parts of its content are
+	/// represented by another tree.
+	class MountedTree {
+	    constructor(
+	    /// The inner tree.
+	    tree, 
+	    /// If this is null, this tree replaces the entire node (it will
+	    /// be included in the regular iteration instead of its host
+	    /// node). If not, only the given ranges are considered to be
+	    /// covered by this tree. This is used for trees that are mixed in
+	    /// a way that isn't strictly hierarchical. Such mounted trees are
+	    /// only entered by [`resolveInner`](#common.Tree.resolveInner)
+	    /// and [`enter`](#common.SyntaxNode.enter).
+	    overlay, 
+	    /// The parser used to create this subtree.
+	    parser) {
+	        this.tree = tree;
+	        this.overlay = overlay;
+	        this.parser = parser;
+	    }
+	}
 	const noProps = Object.create(null);
 	/// Each node in a syntax tree has a node type associated with it.
 	class NodeType {
@@ -23357,6 +23483,387 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    read(from, to) { return this.string.slice(from, to); }
 	}
 
+	/// Create a parse wrapper that, after the inner parse completes,
+	/// scans its tree for mixed language regions with the `nest`
+	/// function, runs the resulting [inner parses](#common.NestedParse),
+	/// and then [mounts](#common.NodeProp^mounted) their results onto the
+	/// tree.
+	///
+	/// The nesting function is passed a cursor to provide context for a
+	/// node, but _should not_ move that cursor, only inspect its
+	/// properties and optionally access its
+	/// [node object](#common.TreeCursor.node).
+	function parseMixed(nest) {
+	    return (parse, input, fragments, ranges) => new MixedParse(parse, nest, input, fragments, ranges);
+	}
+	class InnerParse {
+	    constructor(parser, parse, overlay, target) {
+	        this.parser = parser;
+	        this.parse = parse;
+	        this.overlay = overlay;
+	        this.target = target;
+	    }
+	}
+	class ActiveOverlay {
+	    constructor(parser, predicate, mounts, index, start, target, prev) {
+	        this.parser = parser;
+	        this.predicate = predicate;
+	        this.mounts = mounts;
+	        this.index = index;
+	        this.start = start;
+	        this.target = target;
+	        this.prev = prev;
+	        this.depth = 0;
+	        this.ranges = [];
+	    }
+	}
+	class MixedParse {
+	    constructor(base, nest, input, fragments, ranges) {
+	        this.nest = nest;
+	        this.input = input;
+	        this.fragments = fragments;
+	        this.ranges = ranges;
+	        this.inner = [];
+	        this.innerDone = 0;
+	        this.baseTree = null;
+	        this.stoppedAt = null;
+	        this.baseParse = base;
+	    }
+	    advance() {
+	        if (this.baseParse) {
+	            let done = this.baseParse.advance();
+	            if (!done)
+	                return null;
+	            this.baseParse = null;
+	            this.baseTree = done;
+	            this.startInner();
+	        }
+	        if (this.innerDone == this.inner.length)
+	            return this.baseTree;
+	        let inner = this.inner[this.innerDone], done = inner.parse.advance();
+	        if (done) {
+	            this.innerDone++;
+	            // This is a somewhat dodgy but super helpful hack where we
+	            // patch up nodes created by the inner parse (and thus
+	            // presumably not aliased anywhere else) to hold the information
+	            // about the inner parse.
+	            let props = Object.assign(Object.create(null), inner.target.props);
+	            props[NodeProp.mounted.id] = new MountedTree(done, inner.overlay, inner.parser);
+	            inner.target.props = props;
+	        }
+	        return null;
+	    }
+	    get parsedPos() {
+	        if (this.baseParse)
+	            return 0;
+	        let next = this.inner[this.innerDone];
+	        return next ? next.parse.parsedPos : this.input.length;
+	    }
+	    stopAt(pos) {
+	        this.stoppedAt = pos;
+	        if (this.baseParse)
+	            this.baseParse.stopAt(pos);
+	        else
+	            for (let i = this.innerDone; i < this.inner.length; i++)
+	                this.inner[i].parse.stopAt(pos);
+	    }
+	    startInner() {
+	        let fragmentCursor = new FragmentCursor(this.fragments);
+	        let overlay = null;
+	        let covered = null;
+	        let cursor = new TreeCursor(new TreeNode(this.baseTree, this.ranges[0].from, 0, null), 1 /* Full */);
+	        scan: for (let nest, isCovered;;) {
+	            let enter = true, range;
+	            if (fragmentCursor.hasNode(cursor)) {
+	                if (overlay) {
+	                    let match = overlay.mounts.find(m => m.frag.from <= cursor.from && m.frag.to >= cursor.to && m.mount.overlay);
+	                    if (match)
+	                        for (let r of match.mount.overlay) {
+	                            let from = r.from + match.pos, to = r.to + match.pos;
+	                            if (from >= cursor.from && to <= cursor.to)
+	                                overlay.ranges.push({ from, to });
+	                        }
+	                }
+	                enter = false;
+	            }
+	            else if (covered && (isCovered = checkCover(covered.ranges, cursor.from, cursor.to))) {
+	                enter = isCovered != 2 /* Full */;
+	            }
+	            else if (!cursor.type.isAnonymous && cursor.from < cursor.to && (nest = this.nest(cursor, this.input))) {
+	                if (!cursor.tree)
+	                    materialize(cursor);
+	                let oldMounts = fragmentCursor.findMounts(cursor.from, nest.parser);
+	                if (typeof nest.overlay == "function") {
+	                    overlay = new ActiveOverlay(nest.parser, nest.overlay, oldMounts, this.inner.length, cursor.from, cursor.tree, overlay);
+	                }
+	                else {
+	                    let ranges = punchRanges(this.ranges, nest.overlay || [new Range(cursor.from, cursor.to)]);
+	                    if (ranges.length)
+	                        this.inner.push(new InnerParse(nest.parser, nest.parser.startParse(this.input, enterFragments(oldMounts, ranges), ranges), nest.overlay ? nest.overlay.map(r => new Range(r.from - cursor.from, r.to - cursor.from)) : null, cursor.tree));
+	                    if (!nest.overlay)
+	                        enter = false;
+	                    else if (ranges.length)
+	                        covered = { ranges, depth: 0, prev: covered };
+	                }
+	            }
+	            else if (overlay && (range = overlay.predicate(cursor))) {
+	                if (range === true)
+	                    range = new Range(cursor.from, cursor.to);
+	                if (range.from < range.to)
+	                    overlay.ranges.push(range);
+	            }
+	            if (enter && cursor.firstChild()) {
+	                if (overlay)
+	                    overlay.depth++;
+	                if (covered)
+	                    covered.depth++;
+	            }
+	            else {
+	                for (;;) {
+	                    if (cursor.nextSibling())
+	                        break;
+	                    if (!cursor.parent())
+	                        break scan;
+	                    if (overlay && !--overlay.depth) {
+	                        let ranges = punchRanges(this.ranges, overlay.ranges);
+	                        if (ranges.length)
+	                            this.inner.splice(overlay.index, 0, new InnerParse(overlay.parser, overlay.parser.startParse(this.input, enterFragments(overlay.mounts, ranges), ranges), overlay.ranges.map(r => new Range(r.from - overlay.start, r.to - overlay.start)), overlay.target));
+	                        overlay = overlay.prev;
+	                    }
+	                    if (covered && !--covered.depth)
+	                        covered = covered.prev;
+	                }
+	            }
+	        }
+	    }
+	}
+	function checkCover(covered, from, to) {
+	    for (let range of covered) {
+	        if (range.from >= to)
+	            break;
+	        if (range.to > from)
+	            return range.from <= from && range.to >= to ? 2 /* Full */ : 1 /* Partial */;
+	    }
+	    return 0 /* None */;
+	}
+	// Take a piece of buffer and convert it into a stand-alone
+	// TreeBuffer.
+	function sliceBuf(buf, startI, endI, nodes, positions, off) {
+	    if (startI < endI) {
+	        let from = buf.buffer[startI + 1], to = buf.buffer[endI - 2];
+	        nodes.push(buf.slice(startI, endI, from, to));
+	        positions.push(from - off);
+	    }
+	}
+	// This function takes a node that's in a buffer, and converts it, and
+	// its parent buffer nodes, into a Tree. This is again acting on the
+	// assumption that the trees and buffers have been constructed by the
+	// parse that was ran via the mix parser, and thus aren't shared with
+	// any other code, making violations of the immutability safe.
+	function materialize(cursor) {
+	    let { node } = cursor, depth = 0;
+	    // Scan up to the nearest tree
+	    do {
+	        cursor.parent();
+	        depth++;
+	    } while (!cursor.tree);
+	    // Find the index of the buffer in that tree
+	    let i = 0, base = cursor.tree, off = 0;
+	    for (;; i++) {
+	        off = base.positions[i] + cursor.from;
+	        if (off <= node.from && off + base.children[i].length >= node.to)
+	            break;
+	    }
+	    let buf = base.children[i], b = buf.buffer;
+	    // Split a level in the buffer, putting the nodes before and after
+	    // the child that contains `node` into new buffers.
+	    function split(startI, endI, type, innerOffset) {
+	        let i = startI;
+	        while (b[i + 2] + off <= node.from)
+	            i = b[i + 3];
+	        let children = [], positions = [];
+	        sliceBuf(buf, startI, i, children, positions, innerOffset);
+	        let isTarget = b[i + 1] + off == node.from && b[i + 2] + off == node.to && b[i] == node.type.id;
+	        children.push(isTarget ? node.toTree() : split(i + 4, b[i + 3], buf.set.types[b[i]], b[i + 1]));
+	        positions.push(b[i + 1] - innerOffset);
+	        sliceBuf(buf, b[i + 3], endI, children, positions, innerOffset);
+	        let last = children.length - 1;
+	        return new Tree(type, children, positions, positions[last] + children[last].length);
+	    }
+	    base.children[i] = split(0, b.length, NodeType.none, 0);
+	    // Move the cursor back to the target node
+	    for (let d = 0; d <= depth; d++)
+	        cursor.childAfter(node.from);
+	}
+	class StructureCursor {
+	    constructor(root, offset) {
+	        this.offset = offset;
+	        this.done = false;
+	        this.cursor = root.fullCursor();
+	    }
+	    // Move to the first node (in pre-order) that starts at or after `pos`.
+	    moveTo(pos) {
+	        let { cursor } = this, p = pos - this.offset;
+	        while (!this.done && cursor.from < p) {
+	            if (cursor.to >= pos && cursor.enter(p, 1, false, false)) ;
+	            else if (!cursor.next(false))
+	                this.done = true;
+	        }
+	    }
+	    hasNode(cursor) {
+	        this.moveTo(cursor.from);
+	        if (!this.done && this.cursor.from + this.offset == cursor.from && this.cursor.tree) {
+	            for (let tree = this.cursor.tree;;) {
+	                if (tree == cursor.tree)
+	                    return true;
+	                if (tree.children.length && tree.positions[0] == 0 && tree.children[0] instanceof Tree)
+	                    tree = tree.children[0];
+	                else
+	                    break;
+	            }
+	        }
+	        return false;
+	    }
+	}
+	class FragmentCursor {
+	    constructor(fragments) {
+	        this.fragments = fragments;
+	        this.fragI = 0;
+	        if (fragments.length) {
+	            let first = this.curFrag = fragments[0];
+	            this.inner = new StructureCursor(first.tree, -first.offset);
+	        }
+	        else {
+	            this.curFrag = this.inner = null;
+	        }
+	    }
+	    hasNode(node) {
+	        while (this.curFrag && node.from >= this.curFrag.to)
+	            this.nextFrag();
+	        return this.curFrag && this.curFrag.from <= node.from && this.curFrag.to >= node.to && this.inner.hasNode(node);
+	    }
+	    nextFrag() {
+	        this.fragI++;
+	        if (this.fragI == this.fragments.length) {
+	            this.curFrag = this.inner = null;
+	        }
+	        else {
+	            let frag = this.curFrag = this.fragments[this.fragI];
+	            this.inner = new StructureCursor(frag.tree, -frag.offset);
+	        }
+	    }
+	    findMounts(pos, parser) {
+	        var _a;
+	        let result = [];
+	        if (this.inner) {
+	            this.inner.cursor.moveTo(pos, 1);
+	            for (let pos = this.inner.cursor.node; pos; pos = pos.parent) {
+	                let mount = (_a = pos.tree) === null || _a === void 0 ? void 0 : _a.prop(NodeProp.mounted);
+	                if (mount && mount.parser == parser) {
+	                    for (let i = this.fragI; i < this.fragments.length; i++) {
+	                        let frag = this.fragments[i];
+	                        if (frag.from >= pos.to)
+	                            break;
+	                        if (frag.tree == this.curFrag.tree)
+	                            result.push({
+	                                frag,
+	                                pos: pos.from - frag.offset,
+	                                mount
+	                            });
+	                    }
+	                }
+	            }
+	        }
+	        return result;
+	    }
+	}
+	function punchRanges(outer, ranges) {
+	    let copy = null, current = ranges;
+	    for (let i = 1, j = 0; i < outer.length; i++) {
+	        let gapFrom = outer[i - 1].to, gapTo = outer[i].from;
+	        for (; j < current.length; j++) {
+	            let r = current[j];
+	            if (r.from >= gapTo)
+	                break;
+	            if (r.to <= gapFrom)
+	                continue;
+	            if (!copy)
+	                current = copy = ranges.slice();
+	            if (r.from < gapFrom) {
+	                copy[j] = new Range(r.from, gapFrom);
+	                if (r.to > gapTo)
+	                    copy.splice(j + 1, 0, new Range(gapTo, r.to));
+	            }
+	            else if (r.to > gapTo) {
+	                copy[j--] = new Range(gapTo, r.to);
+	            }
+	            else {
+	                copy.splice(j--, 1);
+	            }
+	        }
+	    }
+	    return current;
+	}
+	function findCoverChanges(a, b, from, to) {
+	    let iA = 0, iB = 0, inA = false, inB = false, pos = -1e9;
+	    let result = [];
+	    for (;;) {
+	        let nextA = iA == a.length ? 1e9 : inA ? a[iA].to : a[iA].from;
+	        let nextB = iB == b.length ? 1e9 : inB ? b[iB].to : b[iB].from;
+	        if (inA != inB) {
+	            let start = Math.max(pos, from), end = Math.min(nextA, nextB, to);
+	            if (start < end)
+	                result.push(new Range(start, end));
+	        }
+	        pos = Math.min(nextA, nextB);
+	        if (pos == 1e9)
+	            break;
+	        if (nextA == pos) {
+	            if (!inA)
+	                inA = true;
+	            else {
+	                inA = false;
+	                iA++;
+	            }
+	        }
+	        if (nextB == pos) {
+	            if (!inB)
+	                inB = true;
+	            else {
+	                inB = false;
+	                iB++;
+	            }
+	        }
+	    }
+	    return result;
+	}
+	// Given a number of fragments for the outer tree, and a set of ranges
+	// to parse, find fragments for inner trees mounted around those
+	// ranges, if any.
+	function enterFragments(mounts, ranges) {
+	    let result = [];
+	    for (let { pos, mount, frag } of mounts) {
+	        let startPos = pos + (mount.overlay ? mount.overlay[0].from : 0), endPos = startPos + mount.tree.length;
+	        let from = Math.max(frag.from, startPos), to = Math.min(frag.to, endPos);
+	        if (mount.overlay) {
+	            let overlay = mount.overlay.map(r => new Range(r.from + pos, r.to + pos));
+	            let changes = findCoverChanges(ranges, overlay, from, to);
+	            for (let i = 0, pos = from;; i++) {
+	                let last = i == changes.length, end = last ? to : changes[i].from;
+	                if (end > pos)
+	                    result.push(new TreeFragment(pos, end, mount.tree, -startPos, frag.from >= pos, frag.to <= end));
+	                if (last)
+	                    break;
+	                pos = changes[i].to;
+	            }
+	        }
+	        else {
+	            result.push(new TreeFragment(from, to, mount.tree, -startPos, frag.from >= startPos, frag.to <= endPos));
+	        }
+	    }
+	    return result;
+	}
+
 	/**
 	Node prop stored in a grammar's top syntax node to provide the
 	facet that stores language data for that language.
@@ -23520,6 +24027,16 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	function syntaxTree(state) {
 	    let field = state.field(Language.state, false);
 	    return field ? field.tree : Tree.empty;
+	}
+	/**
+	Try to get a parse tree that spans at least up to `upto`. The
+	method will do at most `timeout` milliseconds of work to parse
+	up to that point if the tree isn't already available.
+	*/
+	function ensureSyntaxTree(state, upto, timeout = 50) {
+	    var _a;
+	    let parse = (_a = state.field(Language.state, false)) === null || _a === void 0 ? void 0 : _a.context;
+	    return !parse ? null : parse.treeLen >= upto || parse.work(timeout, upto) ? parse.tree : null;
 	}
 	// Lezer-style Input object for a Text document.
 	class DocInput {
@@ -23925,6 +24442,96 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        this.language = language;
 	        this.support = support;
 	        this.extension = [language, support];
+	    }
+	}
+	/**
+	Language descriptions are used to store metadata about languages
+	and to dynamically load them. Their main role is finding the
+	appropriate language for a filename or dynamically loading nested
+	parsers.
+	*/
+	class LanguageDescription {
+	    constructor(
+	    /**
+	    The name of this language.
+	    */
+	    name, 
+	    /**
+	    Alternative names for the mode (lowercased, includes `this.name`).
+	    */
+	    alias, 
+	    /**
+	    File extensions associated with this language.
+	    */
+	    extensions, 
+	    /**
+	    Optional filename pattern that should be associated with this
+	    language.
+	    */
+	    filename, loadFunc) {
+	        this.name = name;
+	        this.alias = alias;
+	        this.extensions = extensions;
+	        this.filename = filename;
+	        this.loadFunc = loadFunc;
+	        /**
+	        If the language has been loaded, this will hold its value.
+	        */
+	        this.support = undefined;
+	        this.loading = null;
+	    }
+	    /**
+	    Start loading the the language. Will return a promise that
+	    resolves to a [`LanguageSupport`](https://codemirror.net/6/docs/ref/#language.LanguageSupport)
+	    object when the language successfully loads.
+	    */
+	    load() {
+	        return this.loading || (this.loading = this.loadFunc().then(support => this.support = support, err => { this.loading = null; throw err; }));
+	    }
+	    /**
+	    Create a language description.
+	    */
+	    static of(spec) {
+	        return new LanguageDescription(spec.name, (spec.alias || []).concat(spec.name).map(s => s.toLowerCase()), spec.extensions || [], spec.filename, spec.load);
+	    }
+	    /**
+	    Look for a language in the given array of descriptions that
+	    matches the filename. Will first match
+	    [`filename`](https://codemirror.net/6/docs/ref/#language.LanguageDescription.filename) patterns,
+	    and then [extensions](https://codemirror.net/6/docs/ref/#language.LanguageDescription.extensions),
+	    and return the first language that matches.
+	    */
+	    static matchFilename(descs, filename) {
+	        for (let d of descs)
+	            if (d.filename && d.filename.test(filename))
+	                return d;
+	        let ext = /\.([^.]+)$/.exec(filename);
+	        if (ext)
+	            for (let d of descs)
+	                if (d.extensions.indexOf(ext[1]) > -1)
+	                    return d;
+	        return null;
+	    }
+	    /**
+	    Look for a language whose name or alias matches the the given
+	    name (case-insensitively). If `fuzzy` is true, and no direct
+	    matchs is found, this'll also search for a language whose name
+	    or alias occurs in the string (for names shorter than three
+	    characters, only when surrounded by non-word characters).
+	    */
+	    static matchLanguageName(descs, name, fuzzy = true) {
+	        name = name.toLowerCase();
+	        for (let d of descs)
+	            if (d.alias.some(a => a == name))
+	                return d;
+	        if (fuzzy)
+	            for (let d of descs)
+	                for (let a of d.alias) {
+	                    let found = name.indexOf(a);
+	                    if (found > -1 && (a.length > 2 || !/\w/.test(name[found - 1]) && !/\w/.test(name[found + a.length])))
+	                        return d;
+	                }
+	        return null;
 	    }
 	}
 
@@ -24819,6 +25426,13 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    },
 	    provide: f => EditorView.decorations.from(f)
 	});
+	/**
+	Get a [range set](https://codemirror.net/6/docs/ref/#rangeset.RangeSet) containing the folded ranges
+	in the given state.
+	*/
+	function foldedRanges(state) {
+	    return state.field(foldState, false) || RangeSet.empty;
+	}
 	function foldInside(state, from, to) {
 	    var _a;
 	    let found = null;
@@ -25208,6 +25822,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Move the selection one character to the right.
 	*/
 	const cursorCharRight = view => cursorByChar(view, view.textDirection == Direction.LTR);
+	/**
+	Move the selection one character forward.
+	*/
+	const cursorCharForward = view => cursorByChar(view, true);
+	/**
+	Move the selection one character backward.
+	*/
+	const cursorCharBackward = view => cursorByChar(view, false);
 	function cursorByGroup(view, forward) {
 	    return moveSel(view, range => range.empty ? view.moveByGroup(range, forward) : rangeEnd(range, forward));
 	}
@@ -25220,6 +25842,63 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Move the selection one group to the right.
 	*/
 	const cursorGroupRight = view => cursorByGroup(view, view.textDirection == Direction.LTR);
+	/**
+	Move the selection one group forward.
+	*/
+	const cursorGroupForward = view => cursorByGroup(view, true);
+	/**
+	Move the selection one group backward.
+	*/
+	const cursorGroupBackward = view => cursorByGroup(view, false);
+	function moveBySubword(view, range, forward) {
+	    let categorize = view.state.charCategorizer(range.from);
+	    return view.moveByChar(range, forward, start => {
+	        let cat = CharCategory.Space, pos = range.from;
+	        let done = false, sawUpper = false, sawLower = false;
+	        let step = (next) => {
+	            if (done)
+	                return false;
+	            pos += forward ? next.length : -next.length;
+	            let nextCat = categorize(next), ahead;
+	            if (cat == CharCategory.Space)
+	                cat = nextCat;
+	            if (cat != nextCat)
+	                return false;
+	            if (cat == CharCategory.Word) {
+	                if (next.toLowerCase() == next) {
+	                    if (!forward && sawUpper)
+	                        return false;
+	                    sawLower = true;
+	                }
+	                else if (sawLower) {
+	                    if (forward)
+	                        return false;
+	                    done = true;
+	                }
+	                else {
+	                    if (sawUpper && forward && categorize(ahead = view.state.sliceDoc(pos, pos + 1)) == CharCategory.Word &&
+	                        ahead.toLowerCase() == ahead)
+	                        return false;
+	                    sawUpper = true;
+	                }
+	            }
+	            return true;
+	        };
+	        step(start);
+	        return step;
+	    });
+	}
+	function cursorBySubword(view, forward) {
+	    return moveSel(view, range => range.empty ? moveBySubword(view, range, forward) : rangeEnd(range, forward));
+	}
+	/**
+	Move the selection one group or camel-case subword forward.
+	*/
+	const cursorSubwordForward = view => cursorBySubword(view, true);
+	/**
+	Move the selection one group or camel-case subword backward.
+	*/
+	const cursorSubwordBackward = view => cursorBySubword(view, false);
 	function interestingNode(state, node, bracketProp) {
 	    if (node.type.prop(bracketProp))
 	        return true;
@@ -25335,6 +26014,11 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	on, if any.
 	*/
 	const cursorMatchingBracket = ({ state, dispatch }) => toMatchingBracket(state, dispatch, false);
+	/**
+	Extend the selection to the bracket matching the one the selection
+	head is currently on, if any.
+	*/
+	const selectMatchingBracket = ({ state, dispatch }) => toMatchingBracket(state, dispatch, true);
 	function extendSel(view, how) {
 	    let selection = updateSel(view.state.selection, range => {
 	        let head = how(range);
@@ -25357,6 +26041,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Move the selection head one character to the right.
 	*/
 	const selectCharRight = view => selectByChar(view, view.textDirection == Direction.LTR);
+	/**
+	Move the selection head one character forward.
+	*/
+	const selectCharForward = view => selectByChar(view, true);
+	/**
+	Move the selection head one character backward.
+	*/
+	const selectCharBackward = view => selectByChar(view, false);
 	function selectByGroup(view, forward) {
 	    return extendSel(view, range => view.moveByGroup(range, forward));
 	}
@@ -25369,6 +26061,25 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Move the selection head one group to the right.
 	*/
 	const selectGroupRight = view => selectByGroup(view, view.textDirection == Direction.LTR);
+	/**
+	Move the selection head one group forward.
+	*/
+	const selectGroupForward = view => selectByGroup(view, true);
+	/**
+	Move the selection head one group backward.
+	*/
+	const selectGroupBackward = view => selectByGroup(view, false);
+	function selectBySubword(view, forward) {
+	    return extendSel(view, range => moveBySubword(view, range, forward));
+	}
+	/**
+	Move the selection head one group or camel-case subword forward.
+	*/
+	const selectSubwordForward = view => selectBySubword(view, true);
+	/**
+	Move the selection head one group or subword backward.
+	*/
+	const selectSubwordBackward = view => selectBySubword(view, false);
 	/**
 	Move the selection head over the next syntactic element to the left.
 	*/
@@ -25600,6 +26311,34 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return skipAtomic(view, pos > lineStart ? lineStart : Math.max(0, pos - 1), false);
 	});
 	/**
+	Delete all whitespace directly before a line end from the
+	document.
+	*/
+	const deleteTrailingWhitespace = ({ state, dispatch }) => {
+	    if (state.readOnly)
+	        return false;
+	    let changes = [];
+	    for (let pos = 0, prev = "", iter = state.doc.iter();;) {
+	        iter.next();
+	        if (iter.lineBreak || iter.done) {
+	            let trailing = prev.search(/\s+$/);
+	            if (trailing > -1)
+	                changes.push({ from: pos - (prev.length - trailing), to: pos });
+	            if (iter.done)
+	                break;
+	            prev = "";
+	        }
+	        else {
+	            prev = iter.value;
+	        }
+	        pos += iter.value.length;
+	    }
+	    if (!changes.length)
+	        return false;
+	    dispatch(state.update({ changes, userEvent: "delete" }));
+	    return true;
+	};
+	/**
 	Replace each selection range with a line break, leaving the cursor
 	on the line before the break.
 	*/
@@ -25725,6 +26464,13 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }));
 	    let selection = updateSel(state.selection, range => view.moveVertically(range, true)).map(changes);
 	    view.dispatch({ changes, selection, scrollIntoView: true, userEvent: "delete.line" });
+	    return true;
+	};
+	/**
+	Replace the selection with a newline.
+	*/
+	const insertNewline = ({ state, dispatch }) => {
+	    dispatch(state.update(state.replaceSelection(state.lineBreak), { scrollIntoView: true, userEvent: "input" }));
 	    return true;
 	};
 	function isBetweenBrackets(state, pos) {
@@ -25855,6 +26601,17 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	            keep++;
 	        changes.push({ from: line.from + keep, to: line.from + space.length, insert: insert.slice(keep) });
 	    }), { userEvent: "delete.dedent" }));
+	    return true;
+	};
+	/**
+	Insert a tab character at the cursor or, if something is selected,
+	use [`indentMore`](https://codemirror.net/6/docs/ref/#commands.indentMore) to indent the entire
+	selection.
+	*/
+	const insertTab = ({ state, dispatch }) => {
+	    if (state.selection.ranges.some(r => !r.empty))
+	        return indentMore({ state, dispatch });
+	    dispatch(state.update(state.replaceSelection("\t"), { scrollIntoView: true, userEvent: "input" }));
 	    return true;
 	};
 	/**
@@ -25994,6 +26751,13 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    { key: "Shift-Mod-k", run: deleteLine },
 	    { key: "Shift-Mod-\\", run: cursorMatchingBracket }
 	].concat(standardKeymap);
+	/**
+	A binding that binds Tab to [`indentMore`](https://codemirror.net/6/docs/ref/#commands.indentMore) and
+	Shift-Tab to [`indentLess`](https://codemirror.net/6/docs/ref/#commands.indentLess).
+	Please see the [Tab example](../../examples/tab/) before using
+	this.
+	*/
+	const indentWithTab = { key: "Tab", run: indentMore, shift: indentLess };
 
 	const defaults = {
 	    brackets: ["(", "[", "{", "'", '"'],
@@ -26221,6 +26985,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	});
 	/**
+	Configures the panel-managing extension.
+	*/
+	function panels(config) {
+	    return config ? [panelConfig.of(config)] : [];
+	}
+	/**
 	Get the active panel created by the given constructor, if any.
 	This can be useful when you need access to your panels' DOM
 	structure.
@@ -26414,7 +27184,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	function add$1(elt, child) {
 	  if (typeof child == "string") {
 	    elt.appendChild(document.createTextNode(child));
-	  } else if (child == null) ; else if (child.nodeType != null) {
+	  } else if (child == null) {
+	  } else if (child.nodeType != null) {
 	    elt.appendChild(child);
 	  } else if (Array.isArray(child)) {
 	    for (var i = 0; i < child.length; i++) add$1(elt, child[i]);
@@ -26944,6 +27715,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        };
 	    }
 	});
+	/**
+	Configure the behavior of the search extension.
+	*/
+	function searchConfig(config) {
+	    return searchConfigFacet.of(config);
+	}
 	class Query {
 	    constructor(search, replace, caseInsensitive) {
 	        this.search = search;
@@ -27477,6 +28254,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        return { shouldMeasure: true };
 	    }
 	}
+	/**
+	Return an extension that configures tooltip behavior.
+	*/
+	function tooltips(config = {}) {
+	    return tooltipConfig.of(config);
+	}
 	const tooltipConfig = /*@__PURE__*/Facet.define({
 	    combine: values => {
 	        var _a, _b;
@@ -27985,6 +28768,18 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return (context) => {
 	        let token = context.matchBefore(match);
 	        return token || context.explicit ? { from: token ? token.from : context.pos, options, span } : null;
+	    };
+	}
+	/**
+	Wrap the given completion source so that it will only fire when the
+	cursor is in a syntax node with one of the given names.
+	*/
+	function ifIn(nodes, source) {
+	    return (context) => {
+	        for (let pos = syntaxTree(context.state).resolveInner(context.pos, -1); pos; pos = pos.parent)
+	            if (nodes.indexOf(pos.name) > -1)
+	                return source(context);
+	        return null;
 	    };
 	}
 	/**
@@ -29151,6 +29946,83 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	});
 
+	function wordRE(wordChars) {
+	    let escaped = wordChars.replace(/[\\[.+*?(){|^$]/g, "\\$&");
+	    try {
+	        return new RegExp(`[\\p{Alphabetic}\\p{Number}_${escaped}]+`, "ug");
+	    }
+	    catch (_a) {
+	        return new RegExp(`[\w${escaped}]`, "g");
+	    }
+	}
+	function mapRE(re, f) {
+	    return new RegExp(f(re.source), re.unicode ? "u" : "");
+	}
+	const wordCaches = /*@__PURE__*/Object.create(null);
+	function wordCache(wordChars) {
+	    return wordCaches[wordChars] || (wordCaches[wordChars] = new WeakMap);
+	}
+	function storeWords(doc, wordRE, result, seen, ignoreAt) {
+	    for (let lines = doc.iterLines(), pos = 0; !lines.next().done;) {
+	        let { value } = lines, m;
+	        wordRE.lastIndex = 0;
+	        while (m = wordRE.exec(value)) {
+	            if (!seen[m[0]] && pos + m.index != ignoreAt) {
+	                result.push({ type: "text", label: m[0] });
+	                seen[m[0]] = true;
+	                if (result.length >= 2000 /* MaxList */)
+	                    return;
+	            }
+	        }
+	        pos += value.length + 1;
+	    }
+	}
+	function collectWords(doc, cache, wordRE, to, ignoreAt) {
+	    let big = doc.length >= 1000 /* MinCacheLen */;
+	    let cached = big && cache.get(doc);
+	    if (cached)
+	        return cached;
+	    let result = [], seen = Object.create(null);
+	    if (doc.children) {
+	        let pos = 0;
+	        for (let ch of doc.children) {
+	            if (ch.length >= 1000 /* MinCacheLen */) {
+	                for (let c of collectWords(ch, cache, wordRE, to - pos, ignoreAt - pos)) {
+	                    if (!seen[c.label]) {
+	                        seen[c.label] = true;
+	                        result.push(c);
+	                    }
+	                }
+	            }
+	            else {
+	                storeWords(ch, wordRE, result, seen, ignoreAt - pos);
+	            }
+	            pos += ch.length + 1;
+	        }
+	    }
+	    else {
+	        storeWords(doc, wordRE, result, seen, ignoreAt);
+	    }
+	    if (big && result.length < 2000 /* MaxList */)
+	        cache.set(doc, result);
+	    return result;
+	}
+	/**
+	A completion source that will scan the document for words (using a
+	[character categorizer](https://codemirror.net/6/docs/ref/#state.EditorState.charCategorizer)), and
+	return those as completions.
+	*/
+	const completeAnyWord = context => {
+	    let wordChars = context.state.languageDataAt("wordChars", context.pos).join("");
+	    let re = wordRE(wordChars);
+	    let token = context.matchBefore(mapRE(re, s => s + "$"));
+	    if (!token && !context.explicit)
+	        return null;
+	    let from = token ? token.from : context.pos;
+	    let options = collectWords(context.state.doc, wordCache(wordChars), re, 50000 /* Range */, from);
+	    return { from, options, span: mapRE(re, s => "^" + s) };
+	};
+
 	/**
 	Returns an extension that enables autocompletion.
 	*/
@@ -29184,6 +30056,25 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    { key: "Enter", run: acceptCompletion }
 	];
 	const completionKeymapExt = /*@__PURE__*/Prec.override(/*@__PURE__*/keymap.computeN([completionConfig], state => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
+	/**
+	Get the current completion status. When completions are available,
+	this will return `"active"`. When completions are pending (in the
+	process of being queried), this returns `"pending"`. Otherwise, it
+	returns `null`.
+	*/
+	function completionStatus(state) {
+	    let cState = state.field(completionState, false);
+	    return cState && cState.active.some(a => a.state == 1 /* Pending */) ? "pending"
+	        : cState && cState.active.some(a => a.state != 0 /* Inactive */) ? "active" : null;
+	}
+	/**
+	Returns the available completions as an array.
+	*/
+	function currentCompletions(state) {
+	    var _a;
+	    let open = (_a = state.field(completionState, false)) === null || _a === void 0 ? void 0 : _a.open;
+	    return open ? open.options.map(o => o.completion) : [];
+	}
 
 	/**
 	Comment or uncomment the current selection. Will use line comments
@@ -29210,12 +30101,28 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	*/
 	const toggleLineComment = /*@__PURE__*/command$1(changeLineComment, 0 /* Toggle */);
 	/**
+	Comment the current selection using line comments.
+	*/
+	const lineComment = /*@__PURE__*/command$1(changeLineComment, 1 /* Comment */);
+	/**
+	Uncomment the current selection using line comments.
+	*/
+	const lineUncomment = /*@__PURE__*/command$1(changeLineComment, 2 /* Uncomment */);
+	/**
 	Comment or uncomment the current selection using block comments.
 	The block comment syntax is taken from the
 	[`commentTokens`](https://codemirror.net/6/docs/ref/#comment.CommentTokens) [language
 	data](https://codemirror.net/6/docs/ref/#state.EditorState.languageDataAt).
 	*/
 	const toggleBlockComment = /*@__PURE__*/command$1(changeBlockComment, 0 /* Toggle */);
+	/**
+	Comment the current selection using block comments.
+	*/
+	const blockComment = /*@__PURE__*/command$1(changeBlockComment, 1 /* Comment */);
+	/**
+	Uncomment the current selection using block comments.
+	*/
+	const blockUncomment = /*@__PURE__*/command$1(changeBlockComment, 2 /* Uncomment */);
 	/**
 	Default key bindings for this package.
 
@@ -29763,6 +30670,33 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        let style = getHighlightStyle(state);
 	        return style && style(tag, scope || NodeType.none);
 	    }
+	}
+	/**
+	Run the tree highlighter over the given tree.
+	*/
+	function highlightTree(tree, 
+	/**
+	Get the CSS classes used to style a given [tag](https://codemirror.net/6/docs/ref/#highlight.Tag),
+	or `null` if it isn't styled. (You'll often want to pass a
+	highlight style's [`match`](https://codemirror.net/6/docs/ref/#highlight.HighlightStyle.match)
+	method here.)
+	*/
+	getStyle, 
+	/**
+	Assign styling to a region of the text. Will be called, in order
+	of position, for any ranges where more than zero classes apply.
+	`classes` is a space separated string of CSS classes.
+	*/
+	putStyle, 
+	/**
+	The start of the range to highlight.
+	*/
+	from = 0, 
+	/**
+	The end of the range.
+	*/
+	to = tree.length) {
+	    highlightTreeRange(tree, from, to, getStyle, putStyle);
 	}
 	class TreeHighlighter {
 	    constructor(view) {
@@ -30375,7 +31309,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	* [`definition`](https://codemirror.net/6/docs/ref/#highlight.tags.definition)[`(variableName)`](https://codemirror.net/6/docs/ref/#highlight.tags.variableName)
 	  to `"cmt-variableName cmt-definition"`
 	*/
-	/*@__PURE__*/HighlightStyle.define([
+	const classHighlightStyle = /*@__PURE__*/HighlightStyle.define([
 	    { tag: tags.link, class: "cmt-link" },
 	    { tag: tags.heading, class: "cmt-heading" },
 	    { tag: tags.emphasis, class: "cmt-emphasis" },
@@ -30458,6 +31392,15 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        baseTheme
 	    ]));
 	}
+	/**
+	Returns a transaction spec which updates the current set of
+	diagnostics.
+	*/
+	function setDiagnostics(state, diagnostics) {
+	    return {
+	        effects: maybeEnableLint(state, [setDiagnosticsEffect.of(diagnostics)], () => LintState.init(diagnostics, null, state))
+	    };
+	}
 	const setDiagnosticsEffect = /*@__PURE__*/StateEffect.define();
 	const togglePanel = /*@__PURE__*/StateEffect.define();
 	const movePanelSelection = /*@__PURE__*/StateEffect.define();
@@ -30490,6 +31433,13 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    provide: f => [showPanel.from(f, val => val.panel),
 	        EditorView.decorations.from(f, s => s.diagnostics)]
 	});
+	/**
+	Returns the number of active lint diagnostics in the given state.
+	*/
+	function diagnosticCount(state) {
+	    let lint = state.field(lintState, false);
+	    return lint ? lint.diagnostics.size : 0;
+	}
 	const activeMark = /*@__PURE__*/Decoration.mark({ class: "cm-lintRange cm-lintRange-active" });
 	function lintTooltip(view, pos, side) {
 	    let { diagnostics } = view.state.field(lintState);
@@ -30561,6 +31511,77 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    { key: "Mod-Shift-m", run: openLintPanel },
 	    { key: "F8", run: nextDiagnostic }
 	];
+	const lintPlugin = /*@__PURE__*/ViewPlugin.fromClass(class {
+	    constructor(view) {
+	        this.view = view;
+	        this.timeout = -1;
+	        this.set = true;
+	        let { delay } = view.state.facet(lintSource);
+	        this.lintTime = Date.now() + delay;
+	        this.run = this.run.bind(this);
+	        this.timeout = setTimeout(this.run, delay);
+	    }
+	    run() {
+	        let now = Date.now();
+	        if (now < this.lintTime - 10) {
+	            setTimeout(this.run, this.lintTime - now);
+	        }
+	        else {
+	            this.set = false;
+	            let { state } = this.view, { sources } = state.facet(lintSource);
+	            Promise.all(sources.map(source => Promise.resolve(source(this.view)))).then(annotations => {
+	                var _a, _b;
+	                let all = annotations.reduce((a, b) => a.concat(b));
+	                if (this.view.state.doc == state.doc &&
+	                    (all.length || ((_b = (_a = this.view.state.field(lintState, false)) === null || _a === void 0 ? void 0 : _a.diagnostics) === null || _b === void 0 ? void 0 : _b.size)))
+	                    this.view.dispatch(setDiagnostics(this.view.state, all));
+	            }, error => { logException(this.view.state, error); });
+	        }
+	    }
+	    update(update) {
+	        let source = update.state.facet(lintSource);
+	        if (update.docChanged || source != update.startState.facet(lintSource)) {
+	            this.lintTime = Date.now() + source.delay;
+	            if (!this.set) {
+	                this.set = true;
+	                this.timeout = setTimeout(this.run, source.delay);
+	            }
+	        }
+	    }
+	    force() {
+	        if (this.set) {
+	            this.lintTime = Date.now();
+	            this.run();
+	        }
+	    }
+	    destroy() {
+	        clearTimeout(this.timeout);
+	    }
+	});
+	const lintSource = /*@__PURE__*/Facet.define({
+	    combine(input) {
+	        return { sources: input.map(i => i.source), delay: input.length ? Math.max(...input.map(i => i.delay)) : 750 };
+	    },
+	    enables: lintPlugin
+	});
+	/**
+	Given a diagnostic source, this function returns an extension that
+	enables linting with that source. It will be called whenever the
+	editor is idle (after its content changed).
+	*/
+	function linter(source, config = {}) {
+	    var _a;
+	    return lintSource.of({ source, delay: (_a = config.delay) !== null && _a !== void 0 ? _a : 750 });
+	}
+	/**
+	Forces any linters [configured](https://codemirror.net/6/docs/ref/#lint.linter) to run when the
+	editor is idle to run right away.
+	*/
+	function forceLinting(view) {
+	    let plugin = view.plugin(lintPlugin);
+	    if (plugin)
+	        plugin.force();
+	}
 	function assignKeys(actions) {
 	    let assigned = [];
 	    if (actions)
@@ -30943,1858 +31964,873 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    ])
 	];
 
-	/// A parse stack. These are used internally by the parser to track
-	/// parsing progress. They also provide some properties and methods
-	/// that external code such as a tokenizer can use to get information
-	/// about the parse state.
-	class Stack {
-	    /// @internal
-	    constructor(
-	    /// The parse that this stack is part of @internal
-	    p, 
-	    /// Holds state, input pos, buffer index triplets for all but the
-	    /// top state @internal
-	    stack, 
-	    /// The current parse state @internal
-	    state, 
-	    // The position at which the next reduce should take place. This
-	    // can be less than `this.pos` when skipped expressions have been
-	    // added to the stack (which should be moved outside of the next
-	    // reduction)
-	    /// @internal
-	    reducePos, 
-	    /// The input position up to which this stack has parsed.
-	    pos, 
-	    /// The dynamic score of the stack, including dynamic precedence
-	    /// and error-recovery penalties
-	    /// @internal
-	    score, 
-	    // The output buffer. Holds (type, start, end, size) quads
-	    // representing nodes created by the parser, where `size` is
-	    // amount of buffer array entries covered by this node.
-	    /// @internal
-	    buffer, 
-	    // The base offset of the buffer. When stacks are split, the split
-	    // instance shared the buffer history with its parent up to
-	    // `bufferBase`, which is the absolute offset (including the
-	    // offset of previous splits) into the buffer at which this stack
-	    // starts writing.
-	    /// @internal
-	    bufferBase, 
-	    /// @internal
-	    curContext, 
-	    /// @internal
-	    lookAhead = 0, 
-	    // A parent stack from which this was split off, if any. This is
-	    // set up so that it always points to a stack that has some
-	    // additional buffer content, never to a stack with an equal
-	    // `bufferBase`.
-	    /// @internal
-	    parent) {
-	        this.p = p;
-	        this.stack = stack;
-	        this.state = state;
-	        this.reducePos = reducePos;
-	        this.pos = pos;
-	        this.score = score;
-	        this.buffer = buffer;
-	        this.bufferBase = bufferBase;
-	        this.curContext = curContext;
-	        this.lookAhead = lookAhead;
-	        this.parent = parent;
+	// Counts the column offset in a string, taking tabs into account.
+	// Used mostly to find indentation.
+	function countCol(string, end, tabSize, startIndex = 0, startValue = 0) {
+	    if (end == null) {
+	        end = string.search(/[^\s\u00a0]/);
+	        if (end == -1)
+	            end = string.length;
 	    }
-	    /// @internal
-	    toString() {
-	        return `[${this.stack.filter((_, i) => i % 3 == 0).concat(this.state)}]@${this.pos}${this.score ? "!" + this.score : ""}`;
-	    }
-	    // Start an empty stack
-	    /// @internal
-	    static start(p, state, pos = 0) {
-	        let cx = p.parser.context;
-	        return new Stack(p, [], state, pos, pos, 0, [], 0, cx ? new StackContext(cx, cx.start) : null, 0, null);
-	    }
-	    /// The stack's current [context](#lr.ContextTracker) value, if
-	    /// any. Its type will depend on the context tracker's type
-	    /// parameter, or it will be `null` if there is no context
-	    /// tracker.
-	    get context() { return this.curContext ? this.curContext.context : null; }
-	    // Push a state onto the stack, tracking its start position as well
-	    // as the buffer base at that point.
-	    /// @internal
-	    pushState(state, start) {
-	        this.stack.push(this.state, start, this.bufferBase + this.buffer.length);
-	        this.state = state;
-	    }
-	    // Apply a reduce action
-	    /// @internal
-	    reduce(action) {
-	        let depth = action >> 19 /* ReduceDepthShift */, type = action & 65535 /* ValueMask */;
-	        let { parser } = this.p;
-	        let dPrec = parser.dynamicPrecedence(type);
-	        if (dPrec)
-	            this.score += dPrec;
-	        if (depth == 0) {
-	            // Zero-depth reductions are a special case—they add stuff to
-	            // the stack without popping anything off.
-	            if (type < parser.minRepeatTerm)
-	                this.storeNode(type, this.reducePos, this.reducePos, 4, true);
-	            this.pushState(parser.getGoto(this.state, type, true), this.reducePos);
-	            this.reduceContext(type, this.reducePos);
-	            return;
-	        }
-	        // Find the base index into `this.stack`, content after which will
-	        // be dropped. Note that with `StayFlag` reductions we need to
-	        // consume two extra frames (the dummy parent node for the skipped
-	        // expression and the state that we'll be staying in, which should
-	        // be moved to `this.state`).
-	        let base = this.stack.length - ((depth - 1) * 3) - (action & 262144 /* StayFlag */ ? 6 : 0);
-	        let start = this.stack[base - 2];
-	        let bufferBase = this.stack[base - 1], count = this.bufferBase + this.buffer.length - bufferBase;
-	        // Store normal terms or `R -> R R` repeat reductions
-	        if (type < parser.minRepeatTerm || (action & 131072 /* RepeatFlag */)) {
-	            let pos = parser.stateFlag(this.state, 1 /* Skipped */) ? this.pos : this.reducePos;
-	            this.storeNode(type, start, pos, count + 4, true);
-	        }
-	        if (action & 262144 /* StayFlag */) {
-	            this.state = this.stack[base];
-	        }
-	        else {
-	            let baseStateID = this.stack[base - 3];
-	            this.state = parser.getGoto(baseStateID, type, true);
-	        }
-	        while (this.stack.length > base)
-	            this.stack.pop();
-	        this.reduceContext(type, start);
-	    }
-	    // Shift a value into the buffer
-	    /// @internal
-	    storeNode(term, start, end, size = 4, isReduce = false) {
-	        if (term == 0 /* Err */) { // Try to omit/merge adjacent error nodes
-	            let cur = this, top = this.buffer.length;
-	            if (top == 0 && cur.parent) {
-	                top = cur.bufferBase - cur.parent.bufferBase;
-	                cur = cur.parent;
-	            }
-	            if (top > 0 && cur.buffer[top - 4] == 0 /* Err */ && cur.buffer[top - 1] > -1) {
-	                if (start == end)
-	                    return;
-	                if (cur.buffer[top - 2] >= start) {
-	                    cur.buffer[top - 2] = end;
-	                    return;
-	                }
-	            }
-	        }
-	        if (!isReduce || this.pos == end) { // Simple case, just append
-	            this.buffer.push(term, start, end, size);
-	        }
-	        else { // There may be skipped nodes that have to be moved forward
-	            let index = this.buffer.length;
-	            if (index > 0 && this.buffer[index - 4] != 0 /* Err */)
-	                while (index > 0 && this.buffer[index - 2] > end) {
-	                    // Move this record forward
-	                    this.buffer[index] = this.buffer[index - 4];
-	                    this.buffer[index + 1] = this.buffer[index - 3];
-	                    this.buffer[index + 2] = this.buffer[index - 2];
-	                    this.buffer[index + 3] = this.buffer[index - 1];
-	                    index -= 4;
-	                    if (size > 4)
-	                        size -= 4;
-	                }
-	            this.buffer[index] = term;
-	            this.buffer[index + 1] = start;
-	            this.buffer[index + 2] = end;
-	            this.buffer[index + 3] = size;
-	        }
-	    }
-	    // Apply a shift action
-	    /// @internal
-	    shift(action, next, nextEnd) {
-	        let start = this.pos;
-	        if (action & 131072 /* GotoFlag */) {
-	            this.pushState(action & 65535 /* ValueMask */, this.pos);
-	        }
-	        else if ((action & 262144 /* StayFlag */) == 0) { // Regular shift
-	            let nextState = action, { parser } = this.p;
-	            if (nextEnd > this.pos || next <= parser.maxNode) {
-	                this.pos = nextEnd;
-	                if (!parser.stateFlag(nextState, 1 /* Skipped */))
-	                    this.reducePos = nextEnd;
-	            }
-	            this.pushState(nextState, start);
-	            this.shiftContext(next, start);
-	            if (next <= parser.maxNode)
-	                this.buffer.push(next, start, nextEnd, 4);
-	        }
-	        else { // Shift-and-stay, which means this is a skipped token
-	            this.pos = nextEnd;
-	            this.shiftContext(next, start);
-	            if (next <= this.p.parser.maxNode)
-	                this.buffer.push(next, start, nextEnd, 4);
-	        }
-	    }
-	    // Apply an action
-	    /// @internal
-	    apply(action, next, nextEnd) {
-	        if (action & 65536 /* ReduceFlag */)
-	            this.reduce(action);
+	    let n = startValue;
+	    for (let i = startIndex; i < end; i++) {
+	        if (string.charCodeAt(i) == 9)
+	            n += tabSize - (n % tabSize);
 	        else
-	            this.shift(action, next, nextEnd);
+	            n++;
 	    }
-	    // Add a prebuilt (reused) node into the buffer. @internal
-	    useNode(value, next) {
-	        let index = this.p.reused.length - 1;
-	        if (index < 0 || this.p.reused[index] != value) {
-	            this.p.reused.push(value);
-	            index++;
-	        }
-	        let start = this.pos;
-	        this.reducePos = this.pos = start + value.length;
-	        this.pushState(next, start);
-	        this.buffer.push(index, start, this.reducePos, -1 /* size == -1 means this is a reused value */);
-	        if (this.curContext)
-	            this.updateContext(this.curContext.tracker.reuse(this.curContext.context, value, this, this.p.stream.reset(this.pos - value.length)));
-	    }
-	    // Split the stack. Due to the buffer sharing and the fact
-	    // that `this.stack` tends to stay quite shallow, this isn't very
-	    // expensive.
-	    /// @internal
-	    split() {
-	        let parent = this;
-	        let off = parent.buffer.length;
-	        // Because the top of the buffer (after this.pos) may be mutated
-	        // to reorder reductions and skipped tokens, and shared buffers
-	        // should be immutable, this copies any outstanding skipped tokens
-	        // to the new buffer, and puts the base pointer before them.
-	        while (off > 0 && parent.buffer[off - 2] > parent.reducePos)
-	            off -= 4;
-	        let buffer = parent.buffer.slice(off), base = parent.bufferBase + off;
-	        // Make sure parent points to an actual parent with content, if there is such a parent.
-	        while (parent && base == parent.bufferBase)
-	            parent = parent.parent;
-	        return new Stack(this.p, this.stack.slice(), this.state, this.reducePos, this.pos, this.score, buffer, base, this.curContext, this.lookAhead, parent);
-	    }
-	    // Try to recover from an error by 'deleting' (ignoring) one token.
-	    /// @internal
-	    recoverByDelete(next, nextEnd) {
-	        let isNode = next <= this.p.parser.maxNode;
-	        if (isNode)
-	            this.storeNode(next, this.pos, nextEnd, 4);
-	        this.storeNode(0 /* Err */, this.pos, nextEnd, isNode ? 8 : 4);
-	        this.pos = this.reducePos = nextEnd;
-	        this.score -= 190 /* Delete */;
-	    }
-	    /// Check if the given term would be able to be shifted (optionally
-	    /// after some reductions) on this stack. This can be useful for
-	    /// external tokenizers that want to make sure they only provide a
-	    /// given token when it applies.
-	    canShift(term) {
-	        for (let sim = new SimulatedStack(this);;) {
-	            let action = this.p.parser.stateSlot(sim.state, 4 /* DefaultReduce */) || this.p.parser.hasAction(sim.state, term);
-	            if ((action & 65536 /* ReduceFlag */) == 0)
-	                return true;
-	            if (action == 0)
-	                return false;
-	            sim.reduce(action);
-	        }
-	    }
-	    // Apply up to Recover.MaxNext recovery actions that conceptually
-	    // inserts some missing token or rule.
-	    /// @internal
-	    recoverByInsert(next) {
-	        if (this.stack.length >= 300 /* MaxInsertStackDepth */)
-	            return [];
-	        let nextStates = this.p.parser.nextStates(this.state);
-	        if (nextStates.length > 4 /* MaxNext */ << 1 || this.stack.length >= 120 /* DampenInsertStackDepth */) {
-	            let best = [];
-	            for (let i = 0, s; i < nextStates.length; i += 2) {
-	                if ((s = nextStates[i + 1]) != this.state && this.p.parser.hasAction(s, next))
-	                    best.push(nextStates[i], s);
-	            }
-	            if (this.stack.length < 120 /* DampenInsertStackDepth */)
-	                for (let i = 0; best.length < 4 /* MaxNext */ << 1 && i < nextStates.length; i += 2) {
-	                    let s = nextStates[i + 1];
-	                    if (!best.some((v, i) => (i & 1) && v == s))
-	                        best.push(nextStates[i], s);
-	                }
-	            nextStates = best;
-	        }
-	        let result = [];
-	        for (let i = 0; i < nextStates.length && result.length < 4 /* MaxNext */; i += 2) {
-	            let s = nextStates[i + 1];
-	            if (s == this.state)
-	                continue;
-	            let stack = this.split();
-	            stack.storeNode(0 /* Err */, stack.pos, stack.pos, 4, true);
-	            stack.pushState(s, this.pos);
-	            stack.shiftContext(nextStates[i], this.pos);
-	            stack.score -= 200 /* Insert */;
-	            result.push(stack);
-	        }
-	        return result;
-	    }
-	    // Force a reduce, if possible. Return false if that can't
-	    // be done.
-	    /// @internal
-	    forceReduce() {
-	        let reduce = this.p.parser.stateSlot(this.state, 5 /* ForcedReduce */);
-	        if ((reduce & 65536 /* ReduceFlag */) == 0)
-	            return false;
-	        let { parser } = this.p;
-	        if (!parser.validAction(this.state, reduce)) {
-	            let depth = reduce >> 19 /* ReduceDepthShift */, term = reduce & 65535 /* ValueMask */;
-	            let target = this.stack.length - depth * 3;
-	            if (target < 0 || parser.getGoto(this.stack[target], term, false) < 0)
-	                return false;
-	            this.storeNode(0 /* Err */, this.reducePos, this.reducePos, 4, true);
-	            this.score -= 100 /* Reduce */;
-	        }
-	        this.reduce(reduce);
-	        return true;
-	    }
-	    /// @internal
-	    forceAll() {
-	        while (!this.p.parser.stateFlag(this.state, 2 /* Accepting */) && this.forceReduce()) { }
-	        return this;
-	    }
-	    /// Check whether this state has no further actions (assumed to be a direct descendant of the
-	    /// top state, since any other states must be able to continue
-	    /// somehow). @internal
-	    get deadEnd() {
-	        if (this.stack.length != 3)
-	            return false;
-	        let { parser } = this.p;
-	        return parser.data[parser.stateSlot(this.state, 1 /* Actions */)] == 65535 /* End */ &&
-	            !parser.stateSlot(this.state, 4 /* DefaultReduce */);
-	    }
-	    /// Restart the stack (put it back in its start state). Only safe
-	    /// when this.stack.length == 3 (state is directly below the top
-	    /// state). @internal
-	    restart() {
-	        this.state = this.stack[0];
-	        this.stack.length = 0;
-	    }
-	    /// @internal
-	    sameState(other) {
-	        if (this.state != other.state || this.stack.length != other.stack.length)
-	            return false;
-	        for (let i = 0; i < this.stack.length; i += 3)
-	            if (this.stack[i] != other.stack[i])
-	                return false;
-	        return true;
-	    }
-	    /// Get the parser used by this stack.
-	    get parser() { return this.p.parser; }
-	    /// Test whether a given dialect (by numeric ID, as exported from
-	    /// the terms file) is enabled.
-	    dialectEnabled(dialectID) { return this.p.parser.dialect.flags[dialectID]; }
-	    shiftContext(term, start) {
-	        if (this.curContext)
-	            this.updateContext(this.curContext.tracker.shift(this.curContext.context, term, this, this.p.stream.reset(start)));
-	    }
-	    reduceContext(term, start) {
-	        if (this.curContext)
-	            this.updateContext(this.curContext.tracker.reduce(this.curContext.context, term, this, this.p.stream.reset(start)));
-	    }
-	    /// @internal
-	    emitContext() {
-	        let last = this.buffer.length - 1;
-	        if (last < 0 || this.buffer[last] != -3)
-	            this.buffer.push(this.curContext.hash, this.reducePos, this.reducePos, -3);
-	    }
-	    /// @internal
-	    emitLookAhead() {
-	        let last = this.buffer.length - 1;
-	        if (last < 0 || this.buffer[last] != -4)
-	            this.buffer.push(this.lookAhead, this.reducePos, this.reducePos, -4);
-	    }
-	    updateContext(context) {
-	        if (context != this.curContext.context) {
-	            let newCx = new StackContext(this.curContext.tracker, context);
-	            if (newCx.hash != this.curContext.hash)
-	                this.emitContext();
-	            this.curContext = newCx;
-	        }
-	    }
-	    /// @internal
-	    setLookAhead(lookAhead) {
-	        if (lookAhead > this.lookAhead) {
-	            this.emitLookAhead();
-	            this.lookAhead = lookAhead;
-	        }
-	    }
-	    /// @internal
-	    close() {
-	        if (this.curContext && this.curContext.tracker.strict)
-	            this.emitContext();
-	        if (this.lookAhead > 0)
-	            this.emitLookAhead();
-	    }
+	    return n;
 	}
-	class StackContext {
-	    constructor(tracker, context) {
-	        this.tracker = tracker;
-	        this.context = context;
-	        this.hash = tracker.strict ? tracker.hash(context) : 0;
+	/**
+	Encapsulates a single line of input. Given to stream syntax code,
+	which uses it to tokenize the content.
+	*/
+	class StringStream {
+	    /**
+	    @internal
+	    */
+	    constructor(
+	    /**
+	    The line.
+	    */
+	    string, tabSize, 
+	    /**
+	    The current indent unit size.
+	    */
+	    indentUnit) {
+	        this.string = string;
+	        this.tabSize = tabSize;
+	        this.indentUnit = indentUnit;
+	        /**
+	        The current position on the line.
+	        */
+	        this.pos = 0;
+	        /**
+	        The start position of the current token.
+	        */
+	        this.start = 0;
+	        this.lastColumnPos = 0;
+	        this.lastColumnValue = 0;
 	    }
-	}
-	var Recover;
-	(function (Recover) {
-	    Recover[Recover["Insert"] = 200] = "Insert";
-	    Recover[Recover["Delete"] = 190] = "Delete";
-	    Recover[Recover["Reduce"] = 100] = "Reduce";
-	    Recover[Recover["MaxNext"] = 4] = "MaxNext";
-	    Recover[Recover["MaxInsertStackDepth"] = 300] = "MaxInsertStackDepth";
-	    Recover[Recover["DampenInsertStackDepth"] = 120] = "DampenInsertStackDepth";
-	})(Recover || (Recover = {}));
-	// Used to cheaply run some reductions to scan ahead without mutating
-	// an entire stack
-	class SimulatedStack {
-	    constructor(start) {
-	        this.start = start;
-	        this.state = start.state;
-	        this.stack = start.stack;
-	        this.base = this.stack.length;
-	    }
-	    reduce(action) {
-	        let term = action & 65535 /* ValueMask */, depth = action >> 19 /* ReduceDepthShift */;
-	        if (depth == 0) {
-	            if (this.stack == this.start.stack)
-	                this.stack = this.stack.slice();
-	            this.stack.push(this.state, 0, 0);
-	            this.base += 3;
-	        }
-	        else {
-	            this.base -= (depth - 1) * 3;
-	        }
-	        let goto = this.start.p.parser.getGoto(this.stack[this.base - 3], term, true);
-	        this.state = goto;
-	    }
-	}
-	// This is given to `Tree.build` to build a buffer, and encapsulates
-	// the parent-stack-walking necessary to read the nodes.
-	class StackBufferCursor {
-	    constructor(stack, pos, index) {
-	        this.stack = stack;
-	        this.pos = pos;
-	        this.index = index;
-	        this.buffer = stack.buffer;
-	        if (this.index == 0)
-	            this.maybeNext();
-	    }
-	    static create(stack, pos = stack.bufferBase + stack.buffer.length) {
-	        return new StackBufferCursor(stack, pos, pos - stack.bufferBase);
-	    }
-	    maybeNext() {
-	        let next = this.stack.parent;
-	        if (next != null) {
-	            this.index = this.stack.bufferBase - next.bufferBase;
-	            this.stack = next;
-	            this.buffer = next.buffer;
-	        }
-	    }
-	    get id() { return this.buffer[this.index - 4]; }
-	    get start() { return this.buffer[this.index - 3]; }
-	    get end() { return this.buffer[this.index - 2]; }
-	    get size() { return this.buffer[this.index - 1]; }
+	    /**
+	    True if we are at the end of the line.
+	    */
+	    eol() { return this.pos >= this.string.length; }
+	    /**
+	    True if we are at the start of the line.
+	    */
+	    sol() { return this.pos == 0; }
+	    /**
+	    Get the next code unit after the current position, or undefined
+	    if we're at the end of the line.
+	    */
+	    peek() { return this.string.charAt(this.pos) || undefined; }
+	    /**
+	    Read the next code unit and advance `this.pos`.
+	    */
 	    next() {
-	        this.index -= 4;
-	        this.pos -= 4;
-	        if (this.index == 0)
-	            this.maybeNext();
+	        if (this.pos < this.string.length)
+	            return this.string.charAt(this.pos++);
 	    }
-	    fork() {
-	        return new StackBufferCursor(this.stack, this.pos, this.index);
-	    }
-	}
-
-	class CachedToken {
-	    constructor() {
-	        this.start = -1;
-	        this.value = -1;
-	        this.end = -1;
-	        this.extended = -1;
-	        this.lookAhead = 0;
-	        this.mask = 0;
-	        this.context = 0;
-	    }
-	}
-	const nullToken = new CachedToken;
-	/// [Tokenizers](#lr.ExternalTokenizer) interact with the input
-	/// through this interface. It presents the input as a stream of
-	/// characters, tracking lookahead and hiding the complexity of
-	/// [ranges](#common.Parser.parse^ranges) from tokenizer code.
-	class InputStream {
-	    /// @internal
-	    constructor(
-	    /// @internal
-	    input, 
-	    /// @internal
-	    ranges) {
-	        this.input = input;
-	        this.ranges = ranges;
-	        /// @internal
-	        this.chunk = "";
-	        /// @internal
-	        this.chunkOff = 0;
-	        /// Backup chunk
-	        this.chunk2 = "";
-	        this.chunk2Pos = 0;
-	        /// The character code of the next code unit in the input, or -1
-	        /// when the stream is at the end of the input.
-	        this.next = -1;
-	        /// @internal
-	        this.token = nullToken;
-	        this.rangeIndex = 0;
-	        this.pos = this.chunkPos = ranges[0].from;
-	        this.range = ranges[0];
-	        this.end = ranges[ranges.length - 1].to;
-	        this.readNext();
-	    }
-	    resolveOffset(offset, assoc) {
-	        let range = this.range, index = this.rangeIndex;
-	        let pos = this.pos + offset;
-	        while (pos < range.from) {
-	            if (!index)
-	                return null;
-	            let next = this.ranges[--index];
-	            pos -= range.from - next.to;
-	            range = next;
-	        }
-	        while (assoc < 0 ? pos > range.to : pos >= range.to) {
-	            if (index == this.ranges.length - 1)
-	                return null;
-	            let next = this.ranges[++index];
-	            pos += next.from - range.to;
-	            range = next;
-	        }
-	        return pos;
-	    }
-	    /// Look at a code unit near the stream position. `.peek(0)` equals
-	    /// `.next`, `.peek(-1)` gives you the previous character, and so
-	    /// on.
-	    ///
-	    /// Note that looking around during tokenizing creates dependencies
-	    /// on potentially far-away content, which may reduce the
-	    /// effectiveness incremental parsing—when looking forward—or even
-	    /// cause invalid reparses when looking backward more than 25 code
-	    /// units, since the library does not track lookbehind.
-	    peek(offset) {
-	        let idx = this.chunkOff + offset, pos, result;
-	        if (idx >= 0 && idx < this.chunk.length) {
-	            pos = this.pos + offset;
-	            result = this.chunk.charCodeAt(idx);
-	        }
-	        else {
-	            let resolved = this.resolveOffset(offset, 1);
-	            if (resolved == null)
-	                return -1;
-	            pos = resolved;
-	            if (pos >= this.chunk2Pos && pos < this.chunk2Pos + this.chunk2.length) {
-	                result = this.chunk2.charCodeAt(pos - this.chunk2Pos);
-	            }
-	            else {
-	                let i = this.rangeIndex, range = this.range;
-	                while (range.to <= pos)
-	                    range = this.ranges[++i];
-	                this.chunk2 = this.input.chunk(this.chunk2Pos = pos);
-	                if (pos + this.chunk2.length > range.to)
-	                    this.chunk2 = this.chunk2.slice(0, range.to - pos);
-	                result = this.chunk2.charCodeAt(0);
-	            }
-	        }
-	        if (pos > this.token.lookAhead)
-	            this.token.lookAhead = pos;
-	        return result;
-	    }
-	    /// Accept a token. By default, the end of the token is set to the
-	    /// current stream position, but you can pass an offset (relative to
-	    /// the stream position) to change that.
-	    acceptToken(token, endOffset = 0) {
-	        let end = endOffset ? this.resolveOffset(endOffset, -1) : this.pos;
-	        if (end == null || end < this.token.start)
-	            throw new RangeError("Token end out of bounds");
-	        this.token.value = token;
-	        this.token.end = end;
-	    }
-	    getChunk() {
-	        if (this.pos >= this.chunk2Pos && this.pos < this.chunk2Pos + this.chunk2.length) {
-	            let { chunk, chunkPos } = this;
-	            this.chunk = this.chunk2;
-	            this.chunkPos = this.chunk2Pos;
-	            this.chunk2 = chunk;
-	            this.chunk2Pos = chunkPos;
-	            this.chunkOff = this.pos - this.chunkPos;
-	        }
-	        else {
-	            this.chunk2 = this.chunk;
-	            this.chunk2Pos = this.chunkPos;
-	            let nextChunk = this.input.chunk(this.pos);
-	            let end = this.pos + nextChunk.length;
-	            this.chunk = end > this.range.to ? nextChunk.slice(0, this.range.to - this.pos) : nextChunk;
-	            this.chunkPos = this.pos;
-	            this.chunkOff = 0;
-	        }
-	    }
-	    readNext() {
-	        if (this.chunkOff >= this.chunk.length) {
-	            this.getChunk();
-	            if (this.chunkOff == this.chunk.length)
-	                return this.next = -1;
-	        }
-	        return this.next = this.chunk.charCodeAt(this.chunkOff);
-	    }
-	    /// Move the stream forward N (defaults to 1) code units. Returns
-	    /// the new value of [`next`](#lr.InputStream.next).
-	    advance(n = 1) {
-	        this.chunkOff += n;
-	        while (this.pos + n >= this.range.to) {
-	            if (this.rangeIndex == this.ranges.length - 1)
-	                return this.setDone();
-	            n -= this.range.to - this.pos;
-	            this.range = this.ranges[++this.rangeIndex];
-	            this.pos = this.range.from;
-	        }
-	        this.pos += n;
-	        if (this.pos > this.token.lookAhead)
-	            this.token.lookAhead = this.pos;
-	        return this.readNext();
-	    }
-	    setDone() {
-	        this.pos = this.chunkPos = this.end;
-	        this.range = this.ranges[this.rangeIndex = this.ranges.length - 1];
-	        this.chunk = "";
-	        return this.next = -1;
-	    }
-	    /// @internal
-	    reset(pos, token) {
-	        if (token) {
-	            this.token = token;
-	            token.start = token.lookAhead = pos;
-	            token.value = token.extended = -1;
-	        }
-	        else {
-	            this.token = nullToken;
-	        }
-	        if (this.pos != pos) {
-	            this.pos = pos;
-	            if (pos == this.end) {
-	                this.setDone();
-	                return this;
-	            }
-	            while (pos < this.range.from)
-	                this.range = this.ranges[--this.rangeIndex];
-	            while (pos >= this.range.to)
-	                this.range = this.ranges[++this.rangeIndex];
-	            if (pos >= this.chunkPos && pos < this.chunkPos + this.chunk.length) {
-	                this.chunkOff = pos - this.chunkPos;
-	            }
-	            else {
-	                this.chunk = "";
-	                this.chunkOff = 0;
-	            }
-	            this.readNext();
-	        }
-	        return this;
-	    }
-	    /// @internal
-	    read(from, to) {
-	        if (from >= this.chunkPos && to <= this.chunkPos + this.chunk.length)
-	            return this.chunk.slice(from - this.chunkPos, to - this.chunkPos);
-	        if (from >= this.range.from && to <= this.range.to)
-	            return this.input.read(from, to);
-	        let result = "";
-	        for (let r of this.ranges) {
-	            if (r.from >= to)
-	                break;
-	            if (r.to > from)
-	                result += this.input.read(Math.max(r.from, from), Math.min(r.to, to));
-	        }
-	        return result;
-	    }
-	}
-	/// @internal
-	class TokenGroup {
-	    constructor(data, id) {
-	        this.data = data;
-	        this.id = id;
-	    }
-	    token(input, stack) { readToken(this.data, input, stack, this.id); }
-	}
-	TokenGroup.prototype.contextual = TokenGroup.prototype.fallback = TokenGroup.prototype.extend = false;
-	/// `@external tokens` declarations in the grammar should resolve to
-	/// an instance of this class.
-	class ExternalTokenizer {
-	    /// Create a tokenizer. The first argument is the function that,
-	    /// given an input stream, scans for the types of tokens it
-	    /// recognizes at the stream's position, and calls
-	    /// [`acceptToken`](#lr.InputStream.acceptToken) when it finds
-	    /// one.
-	    constructor(
-	    /// @internal
-	    token, options = {}) {
-	        this.token = token;
-	        this.contextual = !!options.contextual;
-	        this.fallback = !!options.fallback;
-	        this.extend = !!options.extend;
-	    }
-	}
-	// Tokenizer data is stored a big uint16 array containing, for each
-	// state:
-	//
-	//  - A group bitmask, indicating what token groups are reachable from
-	//    this state, so that paths that can only lead to tokens not in
-	//    any of the current groups can be cut off early.
-	//
-	//  - The position of the end of the state's sequence of accepting
-	//    tokens
-	//
-	//  - The number of outgoing edges for the state
-	//
-	//  - The accepting tokens, as (token id, group mask) pairs
-	//
-	//  - The outgoing edges, as (start character, end character, state
-	//    index) triples, with end character being exclusive
-	//
-	// This function interprets that data, running through a stream as
-	// long as new states with the a matching group mask can be reached,
-	// and updating `token` when it matches a token.
-	function readToken(data, input, stack, group) {
-	    let state = 0, groupMask = 1 << group, { parser } = stack.p, { dialect } = parser;
-	    scan: for (;;) {
-	        if ((groupMask & data[state]) == 0)
-	            break;
-	        let accEnd = data[state + 1];
-	        // Check whether this state can lead to a token in the current group
-	        // Accept tokens in this state, possibly overwriting
-	        // lower-precedence / shorter tokens
-	        for (let i = state + 3; i < accEnd; i += 2)
-	            if ((data[i + 1] & groupMask) > 0) {
-	                let term = data[i];
-	                if (dialect.allows(term) &&
-	                    (input.token.value == -1 || input.token.value == term || parser.overrides(term, input.token.value))) {
-	                    input.acceptToken(term);
-	                    break;
-	                }
-	            }
-	        // Do a binary search on the state's edges
-	        for (let next = input.next, low = 0, high = data[state + 2]; low < high;) {
-	            let mid = (low + high) >> 1;
-	            let index = accEnd + mid + (mid << 1);
-	            let from = data[index], to = data[index + 1];
-	            if (next < from)
-	                high = mid;
-	            else if (next >= to)
-	                low = mid + 1;
-	            else {
-	                state = data[index + 2];
-	                input.advance();
-	                continue scan;
-	            }
-	        }
-	        break;
-	    }
-	}
-
-	// See lezer-generator/src/encode.ts for comments about the encoding
-	// used here
-	function decodeArray(input, Type = Uint16Array) {
-	    if (typeof input != "string")
-	        return input;
-	    let array = null;
-	    for (let pos = 0, out = 0; pos < input.length;) {
-	        let value = 0;
-	        for (;;) {
-	            let next = input.charCodeAt(pos++), stop = false;
-	            if (next == 126 /* BigValCode */) {
-	                value = 65535 /* BigVal */;
-	                break;
-	            }
-	            if (next >= 92 /* Gap2 */)
-	                next--;
-	            if (next >= 34 /* Gap1 */)
-	                next--;
-	            let digit = next - 32 /* Start */;
-	            if (digit >= 46 /* Base */) {
-	                digit -= 46 /* Base */;
-	                stop = true;
-	            }
-	            value += digit;
-	            if (stop)
-	                break;
-	            value *= 46 /* Base */;
-	        }
-	        if (array)
-	            array[out++] = value;
+	    /**
+	    Match the next character against the given string, regular
+	    expression, or predicate. Consume and return it if it matches.
+	    */
+	    eat(match) {
+	        let ch = this.string.charAt(this.pos);
+	        let ok;
+	        if (typeof match == "string")
+	            ok = ch == match;
 	        else
-	            array = new Type(value);
+	            ok = ch && (match instanceof RegExp ? match.test(ch) : match(ch));
+	        if (ok) {
+	            ++this.pos;
+	            return ch;
+	        }
 	    }
-	    return array;
+	    /**
+	    Continue matching characters that match the given string,
+	    regular expression, or predicate function. Return true if any
+	    characters were consumed.
+	    */
+	    eatWhile(match) {
+	        let start = this.pos;
+	        while (this.eat(match)) { }
+	        return this.pos > start;
+	    }
+	    /**
+	    Consume whitespace ahead of `this.pos`. Return true if any was
+	    found.
+	    */
+	    eatSpace() {
+	        let start = this.pos;
+	        while (/[\s\u00a0]/.test(this.string.charAt(this.pos)))
+	            ++this.pos;
+	        return this.pos > start;
+	    }
+	    /**
+	    Move to the end of the line.
+	    */
+	    skipToEnd() { this.pos = this.string.length; }
+	    /**
+	    Move to directly before the given character, if found on the
+	    current line.
+	    */
+	    skipTo(ch) {
+	        let found = this.string.indexOf(ch, this.pos);
+	        if (found > -1) {
+	            this.pos = found;
+	            return true;
+	        }
+	    }
+	    /**
+	    Move back `n` characters.
+	    */
+	    backUp(n) { this.pos -= n; }
+	    /**
+	    Get the column position at `this.pos`.
+	    */
+	    column() {
+	        if (this.lastColumnPos < this.start) {
+	            this.lastColumnValue = countCol(this.string, this.start, this.tabSize, this.lastColumnPos, this.lastColumnValue);
+	            this.lastColumnPos = this.start;
+	        }
+	        return this.lastColumnValue;
+	    }
+	    /**
+	    Get the indentation column of the current line.
+	    */
+	    indentation() {
+	        return countCol(this.string, null, this.tabSize);
+	    }
+	    /**
+	    Match the input against the given string or regular expression
+	    (which should start with a `^`). Return true or the regexp match
+	    if it matches.
+	    
+	    Unless `consume` is set to `false`, this will move `this.pos`
+	    past the matched text.
+	    
+	    When matching a string `caseInsensitive` can be set to true to
+	    make the match case-insensitive.
+	    */
+	    match(pattern, consume, caseInsensitive) {
+	        if (typeof pattern == "string") {
+	            let cased = (str) => caseInsensitive ? str.toLowerCase() : str;
+	            let substr = this.string.substr(this.pos, pattern.length);
+	            if (cased(substr) == cased(pattern)) {
+	                if (consume !== false)
+	                    this.pos += pattern.length;
+	                return true;
+	            }
+	            else
+	                return null;
+	        }
+	        else {
+	            let match = this.string.slice(this.pos).match(pattern);
+	            if (match && match.index > 0)
+	                return null;
+	            if (match && consume !== false)
+	                this.pos += match[0].length;
+	            return match;
+	        }
+	    }
+	    /**
+	    Get the current token.
+	    */
+	    current() { return this.string.slice(this.start, this.pos); }
 	}
 
-	// FIXME find some way to reduce recovery work done when the input
-	// doesn't match the grammar at all.
-	// Environment variable used to control console output
-	const verbose = typeof process != "undefined" && /\bparse\b/.test(process.env.LOG);
-	let stackIDs = null;
-	var Safety;
-	(function (Safety) {
-	    Safety[Safety["Margin"] = 25] = "Margin";
-	})(Safety || (Safety = {}));
-	function cutAt(tree, pos, side) {
-	    let cursor = tree.fullCursor();
-	    cursor.moveTo(pos);
-	    for (;;) {
-	        if (!(side < 0 ? cursor.childBefore(pos) : cursor.childAfter(pos)))
-	            for (;;) {
-	                if ((side < 0 ? cursor.to < pos : cursor.from > pos) && !cursor.type.isError)
-	                    return side < 0 ? Math.max(0, Math.min(cursor.to - 1, pos - 25 /* Margin */))
-	                        : Math.min(tree.length, Math.max(cursor.from + 1, pos + 25 /* Margin */));
-	                if (side < 0 ? cursor.prevSibling() : cursor.nextSibling())
-	                    break;
-	                if (!cursor.parent())
-	                    return side < 0 ? 0 : tree.length;
-	            }
-	    }
+	function fullParser(spec) {
+	    return {
+	        token: spec.token,
+	        blankLine: spec.blankLine || (() => { }),
+	        startState: spec.startState || (() => true),
+	        copyState: spec.copyState || defaultCopyState,
+	        indent: spec.indent || (() => null),
+	        languageData: spec.languageData || {}
+	    };
 	}
-	class FragmentCursor {
-	    constructor(fragments, nodeSet) {
-	        this.fragments = fragments;
-	        this.nodeSet = nodeSet;
-	        this.i = 0;
-	        this.fragment = null;
-	        this.safeFrom = -1;
-	        this.safeTo = -1;
-	        this.trees = [];
-	        this.start = [];
-	        this.index = [];
-	        this.nextFragment();
+	function defaultCopyState(state) {
+	    if (typeof state != "object")
+	        return state;
+	    let newState = {};
+	    for (let prop in state) {
+	        let val = state[prop];
+	        newState[prop] = (val instanceof Array ? val.slice() : val);
 	    }
-	    nextFragment() {
-	        let fr = this.fragment = this.i == this.fragments.length ? null : this.fragments[this.i++];
-	        if (fr) {
-	            this.safeFrom = fr.openStart ? cutAt(fr.tree, fr.from + fr.offset, 1) - fr.offset : fr.from;
-	            this.safeTo = fr.openEnd ? cutAt(fr.tree, fr.to + fr.offset, -1) - fr.offset : fr.to;
-	            while (this.trees.length) {
-	                this.trees.pop();
-	                this.start.pop();
-	                this.index.pop();
+	    return newState;
+	}
+	/**
+	A [language](https://codemirror.net/6/docs/ref/#language.Language) class based on a streaming
+	parser.
+	*/
+	class StreamLanguage extends Language {
+	    constructor(parser) {
+	        let data = defineLanguageFacet(parser.languageData);
+	        let p = fullParser(parser), self;
+	        let impl = new class extends Parser {
+	            createParse(input, fragments, ranges) {
+	                return new Parse(self, input, fragments, ranges);
 	            }
-	            this.trees.push(fr.tree);
-	            this.start.push(-fr.offset);
-	            this.index.push(0);
-	            this.nextStart = this.safeFrom;
+	        };
+	        super(data, impl, docID(data), [indentService.of((cx, pos) => this.getIndent(cx, pos))]);
+	        self = this;
+	        this.streamParser = p;
+	        this.stateAfter = new NodeProp({ perNode: true });
+	    }
+	    static define(spec) { return new StreamLanguage(spec); }
+	    getIndent(cx, pos) {
+	        let tree = syntaxTree(cx.state), at = tree.resolve(pos);
+	        while (at && at.type != this.topNode)
+	            at = at.parent;
+	        if (!at)
+	            return null;
+	        let start = findState(this, tree, 0, at.from, pos), statePos, state;
+	        if (start) {
+	            state = start.state;
+	            statePos = start.pos + 1;
 	        }
 	        else {
-	            this.nextStart = 1e9;
+	            state = this.streamParser.startState(cx.unit);
+	            statePos = 0;
 	        }
-	    }
-	    // `pos` must be >= any previously given `pos` for this cursor
-	    nodeAt(pos) {
-	        if (pos < this.nextStart)
+	        if (pos - statePos > 10000 /* MaxIndentScanDist */)
 	            return null;
-	        while (this.fragment && this.safeTo <= pos)
-	            this.nextFragment();
-	        if (!this.fragment)
-	            return null;
-	        for (;;) {
-	            let last = this.trees.length - 1;
-	            if (last < 0) { // End of tree
-	                this.nextFragment();
-	                return null;
-	            }
-	            let top = this.trees[last], index = this.index[last];
-	            if (index == top.children.length) {
-	                this.trees.pop();
-	                this.start.pop();
-	                this.index.pop();
-	                continue;
-	            }
-	            let next = top.children[index];
-	            let start = this.start[last] + top.positions[index];
-	            if (start > pos) {
-	                this.nextStart = start;
-	                return null;
-	            }
-	            if (next instanceof Tree) {
-	                if (start == pos) {
-	                    if (start < this.safeFrom)
-	                        return null;
-	                    let end = start + next.length;
-	                    if (end <= this.safeTo) {
-	                        let lookAhead = next.prop(NodeProp.lookAhead);
-	                        if (!lookAhead || end + lookAhead < this.fragment.to)
-	                            return next;
-	                    }
-	                }
-	                this.index[last]++;
-	                if (start + next.length >= Math.max(this.safeFrom, pos)) { // Enter this node
-	                    this.trees.push(next);
-	                    this.start.push(start);
-	                    this.index.push(0);
-	                }
+	        while (statePos < pos) {
+	            let line = cx.state.doc.lineAt(statePos), end = Math.min(pos, line.to);
+	            if (line.length) {
+	                let stream = new StringStream(line.text, cx.state.tabSize, cx.unit);
+	                while (stream.pos < end - line.from)
+	                    readToken(this.streamParser.token, stream, state);
 	            }
 	            else {
-	                this.index[last]++;
-	                this.nextStart = start + next.length;
+	                this.streamParser.blankLine(state, cx.unit);
 	            }
-	        }
-	    }
-	}
-	class TokenCache {
-	    constructor(parser, stream) {
-	        this.stream = stream;
-	        this.tokens = [];
-	        this.mainToken = null;
-	        this.actions = [];
-	        this.tokens = parser.tokenizers.map(_ => new CachedToken);
-	    }
-	    getActions(stack) {
-	        let actionIndex = 0;
-	        let main = null;
-	        let { parser } = stack.p, { tokenizers } = parser;
-	        let mask = parser.stateSlot(stack.state, 3 /* TokenizerMask */);
-	        let context = stack.curContext ? stack.curContext.hash : 0;
-	        let lookAhead = 0;
-	        for (let i = 0; i < tokenizers.length; i++) {
-	            if (((1 << i) & mask) == 0)
-	                continue;
-	            let tokenizer = tokenizers[i], token = this.tokens[i];
-	            if (main && !tokenizer.fallback)
-	                continue;
-	            if (tokenizer.contextual || token.start != stack.pos || token.mask != mask || token.context != context) {
-	                this.updateCachedToken(token, tokenizer, stack);
-	                token.mask = mask;
-	                token.context = context;
-	            }
-	            if (token.lookAhead > token.end + 25 /* Margin */)
-	                lookAhead = Math.max(token.lookAhead, lookAhead);
-	            if (token.value != 0 /* Err */) {
-	                let startIndex = actionIndex;
-	                if (token.extended > -1)
-	                    actionIndex = this.addActions(stack, token.extended, token.end, actionIndex);
-	                actionIndex = this.addActions(stack, token.value, token.end, actionIndex);
-	                if (!tokenizer.extend) {
-	                    main = token;
-	                    if (actionIndex > startIndex)
-	                        break;
-	                }
-	            }
-	        }
-	        while (this.actions.length > actionIndex)
-	            this.actions.pop();
-	        if (lookAhead)
-	            stack.setLookAhead(lookAhead);
-	        if (!main && stack.pos == this.stream.end) {
-	            main = new CachedToken;
-	            main.value = stack.p.parser.eofTerm;
-	            main.start = main.end = stack.pos;
-	            actionIndex = this.addActions(stack, main.value, main.end, actionIndex);
-	        }
-	        this.mainToken = main;
-	        return this.actions;
-	    }
-	    getMainToken(stack) {
-	        if (this.mainToken)
-	            return this.mainToken;
-	        let main = new CachedToken, { pos, p } = stack;
-	        main.start = pos;
-	        main.end = Math.min(pos + 1, p.stream.end);
-	        main.value = pos == p.stream.end ? p.parser.eofTerm : 0 /* Err */;
-	        return main;
-	    }
-	    updateCachedToken(token, tokenizer, stack) {
-	        tokenizer.token(this.stream.reset(stack.pos, token), stack);
-	        if (token.value > -1) {
-	            let { parser } = stack.p;
-	            for (let i = 0; i < parser.specialized.length; i++)
-	                if (parser.specialized[i] == token.value) {
-	                    let result = parser.specializers[i](this.stream.read(token.start, token.end), stack);
-	                    if (result >= 0 && stack.p.parser.dialect.allows(result >> 1)) {
-	                        if ((result & 1) == 0 /* Specialize */)
-	                            token.value = result >> 1;
-	                        else
-	                            token.extended = result >> 1;
-	                        break;
-	                    }
-	                }
-	        }
-	        else {
-	            token.value = 0 /* Err */;
-	            token.end = Math.min(stack.p.stream.end, stack.pos + 1);
-	        }
-	    }
-	    putAction(action, token, end, index) {
-	        // Don't add duplicate actions
-	        for (let i = 0; i < index; i += 3)
-	            if (this.actions[i] == action)
-	                return index;
-	        this.actions[index++] = action;
-	        this.actions[index++] = token;
-	        this.actions[index++] = end;
-	        return index;
-	    }
-	    addActions(stack, token, end, index) {
-	        let { state } = stack, { parser } = stack.p, { data } = parser;
-	        for (let set = 0; set < 2; set++) {
-	            for (let i = parser.stateSlot(state, set ? 2 /* Skip */ : 1 /* Actions */);; i += 3) {
-	                if (data[i] == 65535 /* End */) {
-	                    if (data[i + 1] == 1 /* Next */) {
-	                        i = pair(data, i + 2);
-	                    }
-	                    else {
-	                        if (index == 0 && data[i + 1] == 2 /* Other */)
-	                            index = this.putAction(pair(data, i + 1), token, end, index);
-	                        break;
-	                    }
-	                }
-	                if (data[i] == token)
-	                    index = this.putAction(pair(data, i + 1), token, end, index);
-	            }
-	        }
-	        return index;
-	    }
-	}
-	var Rec;
-	(function (Rec) {
-	    Rec[Rec["Distance"] = 5] = "Distance";
-	    Rec[Rec["MaxRemainingPerStep"] = 3] = "MaxRemainingPerStep";
-	    Rec[Rec["MinBufferLengthPrune"] = 200] = "MinBufferLengthPrune";
-	    Rec[Rec["ForceReduceLimit"] = 10] = "ForceReduceLimit";
-	})(Rec || (Rec = {}));
-	class Parse {
-	    constructor(parser, input, fragments, ranges) {
-	        this.parser = parser;
-	        this.input = input;
-	        this.ranges = ranges;
-	        this.recovering = 0;
-	        this.nextStackID = 0x2654;
-	        this.minStackPos = 0;
-	        this.reused = [];
-	        this.stoppedAt = null;
-	        this.stream = new InputStream(input, ranges);
-	        this.tokens = new TokenCache(parser, this.stream);
-	        this.topTerm = parser.top[1];
-	        let { from } = ranges[0];
-	        this.stacks = [Stack.start(this, parser.top[0], from)];
-	        this.fragments = fragments.length && this.stream.end - from > parser.bufferLength * 4
-	            ? new FragmentCursor(fragments, parser.nodeSet) : null;
-	    }
-	    get parsedPos() {
-	        return this.minStackPos;
-	    }
-	    // Move the parser forward. This will process all parse stacks at
-	    // `this.pos` and try to advance them to a further position. If no
-	    // stack for such a position is found, it'll start error-recovery.
-	    //
-	    // When the parse is finished, this will return a syntax tree. When
-	    // not, it returns `null`.
-	    advance() {
-	        let stacks = this.stacks, pos = this.minStackPos;
-	        // This will hold stacks beyond `pos`.
-	        let newStacks = this.stacks = [];
-	        let stopped, stoppedTokens;
-	        // Keep advancing any stacks at `pos` until they either move
-	        // forward or can't be advanced. Gather stacks that can't be
-	        // advanced further in `stopped`.
-	        for (let i = 0; i < stacks.length; i++) {
-	            let stack = stacks[i];
-	            for (;;) {
-	                this.tokens.mainToken = null;
-	                if (stack.pos > pos) {
-	                    newStacks.push(stack);
-	                }
-	                else if (this.advanceStack(stack, newStacks, stacks)) {
-	                    continue;
-	                }
-	                else {
-	                    if (!stopped) {
-	                        stopped = [];
-	                        stoppedTokens = [];
-	                    }
-	                    stopped.push(stack);
-	                    let tok = this.tokens.getMainToken(stack);
-	                    stoppedTokens.push(tok.value, tok.end);
-	                }
+	            if (end == pos)
 	                break;
-	            }
+	            statePos = line.to + 1;
 	        }
-	        if (!newStacks.length) {
-	            let finished = stopped && findFinished(stopped);
-	            if (finished)
-	                return this.stackToTree(finished);
-	            if (this.parser.strict) {
-	                if (verbose && stopped)
-	                    console.log("Stuck with token " + (this.tokens.mainToken ? this.parser.getName(this.tokens.mainToken.value) : "none"));
-	                throw new SyntaxError("No parse at " + pos);
-	            }
-	            if (!this.recovering)
-	                this.recovering = 5 /* Distance */;
+	        let { text } = cx.state.doc.lineAt(pos);
+	        return this.streamParser.indent(state, /^\s*(.*)/.exec(text)[1], cx);
+	    }
+	    get allowsNesting() { return false; }
+	}
+	function findState(lang, tree, off, startPos, before) {
+	    let state = off >= startPos && off + tree.length <= before && tree.prop(lang.stateAfter);
+	    if (state)
+	        return { state: lang.streamParser.copyState(state), pos: off + tree.length };
+	    for (let i = tree.children.length - 1; i >= 0; i--) {
+	        let child = tree.children[i], pos = off + tree.positions[i];
+	        let found = child instanceof Tree && pos < before && findState(lang, child, pos, startPos, before);
+	        if (found)
+	            return found;
+	    }
+	    return null;
+	}
+	function cutTree(lang, tree, from, to, inside) {
+	    if (inside && from <= 0 && to >= tree.length)
+	        return tree;
+	    if (!inside && tree.type == lang.topNode)
+	        inside = true;
+	    for (let i = tree.children.length - 1; i >= 0; i--) {
+	        let pos = tree.positions[i] + from, child = tree.children[i], inner;
+	        if (pos < to && child instanceof Tree) {
+	            if (!(inner = cutTree(lang, child, from - pos, to - pos, inside)))
+	                break;
+	            return !inside ? inner
+	                : new Tree(tree.type, tree.children.slice(0, i).concat(inner), tree.positions.slice(0, i + 1), pos + inner.length);
 	        }
-	        if (this.recovering && stopped) {
-	            let finished = this.runRecovery(stopped, stoppedTokens, newStacks);
-	            if (finished)
-	                return this.stackToTree(finished.forceAll());
+	    }
+	    return null;
+	}
+	function findStartInFragments(lang, fragments, startPos, editorState) {
+	    for (let f of fragments) {
+	        let from = f.from + (f.openStart ? 25 : 0), to = f.to - (f.openEnd ? 25 : 0);
+	        let found = from <= startPos && to > startPos && findState(lang, f.tree, 0 - f.offset, startPos, to), tree;
+	        if (found && (tree = cutTree(lang, f.tree, startPos + f.offset, found.pos + f.offset, false)))
+	            return { state: found.state, tree };
+	    }
+	    return { state: lang.streamParser.startState(editorState ? getIndentUnit(editorState) : 4), tree: Tree.empty };
+	}
+	class Parse {
+	    constructor(lang, input, fragments, ranges) {
+	        this.lang = lang;
+	        this.input = input;
+	        this.fragments = fragments;
+	        this.ranges = ranges;
+	        this.stoppedAt = null;
+	        this.chunks = [];
+	        this.chunkPos = [];
+	        this.chunk = [];
+	        this.chunkReused = undefined;
+	        this.rangeIndex = 0;
+	        this.to = ranges[ranges.length - 1].to;
+	        let context = ParseContext.get(), from = ranges[0].from;
+	        let { state, tree } = findStartInFragments(lang, fragments, from, context === null || context === void 0 ? void 0 : context.state);
+	        this.state = state;
+	        this.parsedPos = this.chunkStart = from + tree.length;
+	        if (tree.length) {
+	            this.chunks.push(tree);
+	            this.chunkPos.push(0);
 	        }
-	        if (this.recovering) {
-	            let maxRemaining = this.recovering == 1 ? 1 : this.recovering * 3 /* MaxRemainingPerStep */;
-	            if (newStacks.length > maxRemaining) {
-	                newStacks.sort((a, b) => b.score - a.score);
-	                while (newStacks.length > maxRemaining)
-	                    newStacks.pop();
-	            }
-	            if (newStacks.some(s => s.reducePos > pos))
-	                this.recovering--;
+	        if (context && this.parsedPos < context.viewport.from - 100000 /* MaxDistanceBeforeViewport */) {
+	            this.state = this.lang.streamParser.startState(getIndentUnit(context.state));
+	            context.skipUntilInView(this.parsedPos, context.viewport.from);
+	            this.parsedPos = context.viewport.from;
 	        }
-	        else if (newStacks.length > 1) {
-	            // Prune stacks that are in the same state, or that have been
-	            // running without splitting for a while, to avoid getting stuck
-	            // with multiple successful stacks running endlessly on.
-	            outer: for (let i = 0; i < newStacks.length - 1; i++) {
-	                let stack = newStacks[i];
-	                for (let j = i + 1; j < newStacks.length; j++) {
-	                    let other = newStacks[j];
-	                    if (stack.sameState(other) ||
-	                        stack.buffer.length > 200 /* MinBufferLengthPrune */ && other.buffer.length > 200 /* MinBufferLengthPrune */) {
-	                        if (((stack.score - other.score) || (stack.buffer.length - other.buffer.length)) > 0) {
-	                            newStacks.splice(j--, 1);
-	                        }
-	                        else {
-	                            newStacks.splice(i--, 1);
-	                            continue outer;
-	                        }
-	                    }
-	                }
-	            }
+	    }
+	    advance() {
+	        let context = ParseContext.get();
+	        let parseEnd = this.stoppedAt == null ? this.to : this.stoppedAt;
+	        let end = Math.min(parseEnd, this.chunkStart + 2048 /* ChunkSize */);
+	        if (context)
+	            end = Math.min(end, context.viewport.to);
+	        while (this.parsedPos < end)
+	            this.parseLine(context);
+	        if (this.chunkStart < this.parsedPos)
+	            this.finishChunk();
+	        if (this.parsedPos >= parseEnd)
+	            return this.finish();
+	        if (context && this.parsedPos >= context.viewport.to) {
+	            context.skipUntilInView(this.parsedPos, parseEnd);
+	            return this.finish();
 	        }
-	        this.minStackPos = newStacks[0].pos;
-	        for (let i = 1; i < newStacks.length; i++)
-	            if (newStacks[i].pos < this.minStackPos)
-	                this.minStackPos = newStacks[i].pos;
 	        return null;
 	    }
 	    stopAt(pos) {
-	        if (this.stoppedAt != null && this.stoppedAt < pos)
-	            throw new RangeError("Can't move stoppedAt forward");
 	        this.stoppedAt = pos;
 	    }
-	    // Returns an updated version of the given stack, or null if the
-	    // stack can't advance normally. When `split` and `stacks` are
-	    // given, stacks split off by ambiguous operations will be pushed to
-	    // `split`, or added to `stacks` if they move `pos` forward.
-	    advanceStack(stack, stacks, split) {
-	        let start = stack.pos, { parser } = this;
-	        let base = verbose ? this.stackID(stack) + " -> " : "";
-	        if (this.stoppedAt != null && start > this.stoppedAt)
-	            return stack.forceReduce() ? stack : null;
-	        if (this.fragments) {
-	            let strictCx = stack.curContext && stack.curContext.tracker.strict, cxHash = strictCx ? stack.curContext.hash : 0;
-	            for (let cached = this.fragments.nodeAt(start); cached;) {
-	                let match = this.parser.nodeSet.types[cached.type.id] == cached.type ? parser.getGoto(stack.state, cached.type.id) : -1;
-	                if (match > -1 && cached.length && (!strictCx || (cached.prop(NodeProp.contextHash) || 0) == cxHash)) {
-	                    stack.useNode(cached, match);
-	                    if (verbose)
-	                        console.log(base + this.stackID(stack) + ` (via reuse of ${parser.getName(cached.type.id)})`);
-	                    return true;
-	                }
-	                if (!(cached instanceof Tree) || cached.children.length == 0 || cached.positions[0] > 0)
-	                    break;
-	                let inner = cached.children[0];
-	                if (inner instanceof Tree && cached.positions[0] == 0)
-	                    cached = inner;
-	                else
-	                    break;
-	            }
+	    lineAfter(pos) {
+	        let chunk = this.input.chunk(pos);
+	        if (!this.input.lineChunks) {
+	            let eol = chunk.indexOf("\n");
+	            if (eol > -1)
+	                chunk = chunk.slice(0, eol);
 	        }
-	        let defaultReduce = parser.stateSlot(stack.state, 4 /* DefaultReduce */);
-	        if (defaultReduce > 0) {
-	            stack.reduce(defaultReduce);
-	            if (verbose)
-	                console.log(base + this.stackID(stack) + ` (via always-reduce ${parser.getName(defaultReduce & 65535 /* ValueMask */)})`);
-	            return true;
+	        else if (chunk == "\n") {
+	            chunk = "";
 	        }
-	        let actions = this.tokens.getActions(stack);
-	        for (let i = 0; i < actions.length;) {
-	            let action = actions[i++], term = actions[i++], end = actions[i++];
-	            let last = i == actions.length || !split;
-	            let localStack = last ? stack : stack.split();
-	            localStack.apply(action, term, end);
-	            if (verbose)
-	                console.log(base + this.stackID(localStack) + ` (via ${(action & 65536 /* ReduceFlag */) == 0 ? "shift"
-                    : `reduce of ${parser.getName(action & 65535 /* ValueMask */)}`} for ${parser.getName(term)} @ ${start}${localStack == stack ? "" : ", split"})`);
-	            if (last)
-	                return true;
-	            else if (localStack.pos > start)
-	                stacks.push(localStack);
-	            else
-	                split.push(localStack);
-	        }
-	        return false;
+	        return pos + chunk.length <= this.to ? chunk : chunk.slice(0, this.to - pos);
 	    }
-	    // Advance a given stack forward as far as it will go. Returns the
-	    // (possibly updated) stack if it got stuck, or null if it moved
-	    // forward and was given to `pushStackDedup`.
-	    advanceFully(stack, newStacks) {
-	        let pos = stack.pos;
+	    nextLine() {
+	        let from = this.parsedPos, line = this.lineAfter(from), end = from + line.length;
+	        for (let index = this.rangeIndex;;) {
+	            let rangeEnd = this.ranges[index].to;
+	            if (rangeEnd >= end)
+	                break;
+	            line = line.slice(0, rangeEnd - (end - line.length));
+	            index++;
+	            if (index == this.ranges.length)
+	                break;
+	            let rangeStart = this.ranges[index].from;
+	            let after = this.lineAfter(rangeStart);
+	            line += after;
+	            end = rangeStart + after.length;
+	        }
+	        return { line, end };
+	    }
+	    skipGapsTo(pos, offset, side) {
 	        for (;;) {
-	            if (!this.advanceStack(stack, null, null))
-	                return false;
-	            if (stack.pos > pos) {
-	                pushStackDedup(stack, newStacks);
-	                return true;
-	            }
+	            let end = this.ranges[this.rangeIndex].to, offPos = pos + offset;
+	            if (side > 0 ? end > offPos : end >= offPos)
+	                break;
+	            let start = this.ranges[++this.rangeIndex].from;
+	            offset += start - end;
 	        }
+	        return offset;
 	    }
-	    runRecovery(stacks, tokens, newStacks) {
-	        let finished = null, restarted = false;
-	        for (let i = 0; i < stacks.length; i++) {
-	            let stack = stacks[i], token = tokens[i << 1], tokenEnd = tokens[(i << 1) + 1];
-	            let base = verbose ? this.stackID(stack) + " -> " : "";
-	            if (stack.deadEnd) {
-	                if (restarted)
-	                    continue;
-	                restarted = true;
-	                stack.restart();
-	                if (verbose)
-	                    console.log(base + this.stackID(stack) + " (restarted)");
-	                let done = this.advanceFully(stack, newStacks);
-	                if (done)
-	                    continue;
-	            }
-	            let force = stack.split(), forceBase = base;
-	            for (let j = 0; force.forceReduce() && j < 10 /* ForceReduceLimit */; j++) {
-	                if (verbose)
-	                    console.log(forceBase + this.stackID(force) + " (via force-reduce)");
-	                let done = this.advanceFully(force, newStacks);
-	                if (done)
+	    emitToken(id, from, to, size, offset) {
+	        if (this.ranges.length > 1) {
+	            offset = this.skipGapsTo(from, offset, 1);
+	            from += offset;
+	            let len0 = this.chunk.length;
+	            offset = this.skipGapsTo(to, offset, -1);
+	            to += offset;
+	            size += this.chunk.length - len0;
+	        }
+	        this.chunk.push(id, from, to, size);
+	        return offset;
+	    }
+	    parseLine(context) {
+	        let { line, end } = this.nextLine(), offset = 0, { streamParser } = this.lang;
+	        let stream = new StringStream(line, context ? context.state.tabSize : 4, context ? getIndentUnit(context.state) : 2);
+	        if (stream.eol()) {
+	            streamParser.blankLine(this.state, stream.indentUnit);
+	        }
+	        else {
+	            while (!stream.eol()) {
+	                let token = readToken(streamParser.token, stream, this.state);
+	                if (token)
+	                    offset = this.emitToken(tokenID(token), this.parsedPos + stream.start, this.parsedPos + stream.pos, 4, offset);
+	                if (stream.start > 10000 /* MaxLineLength */)
 	                    break;
-	                if (verbose)
-	                    forceBase = this.stackID(force) + " -> ";
-	            }
-	            for (let insert of stack.recoverByInsert(token)) {
-	                if (verbose)
-	                    console.log(base + this.stackID(insert) + " (via recover-insert)");
-	                this.advanceFully(insert, newStacks);
-	            }
-	            if (this.stream.end > stack.pos) {
-	                if (tokenEnd == stack.pos) {
-	                    tokenEnd++;
-	                    token = 0 /* Err */;
-	                }
-	                stack.recoverByDelete(token, tokenEnd);
-	                if (verbose)
-	                    console.log(base + this.stackID(stack) + ` (via recover-delete ${this.parser.getName(token)})`);
-	                pushStackDedup(stack, newStacks);
-	            }
-	            else if (!finished || finished.score < stack.score) {
-	                finished = stack;
 	            }
 	        }
-	        return finished;
+	        this.parsedPos = end;
+	        if (this.parsedPos < this.to)
+	            this.parsedPos++;
 	    }
-	    // Convert the stack's buffer to a syntax tree.
-	    stackToTree(stack) {
-	        stack.close();
-	        return Tree.build({ buffer: StackBufferCursor.create(stack),
-	            nodeSet: this.parser.nodeSet,
-	            topID: this.topTerm,
-	            maxBufferLength: this.parser.bufferLength,
-	            reused: this.reused,
-	            start: this.ranges[0].from,
-	            length: stack.pos - this.ranges[0].from,
-	            minRepeatType: this.parser.minRepeatTerm });
+	    finishChunk() {
+	        let tree = Tree.build({
+	            buffer: this.chunk,
+	            start: this.chunkStart,
+	            length: this.parsedPos - this.chunkStart,
+	            nodeSet,
+	            topID: 0,
+	            maxBufferLength: 2048 /* ChunkSize */,
+	            reused: this.chunkReused
+	        });
+	        tree = new Tree(tree.type, tree.children, tree.positions, tree.length, [[this.lang.stateAfter, this.lang.streamParser.copyState(this.state)]]);
+	        this.chunks.push(tree);
+	        this.chunkPos.push(this.chunkStart - this.ranges[0].from);
+	        this.chunk = [];
+	        this.chunkReused = undefined;
+	        this.chunkStart = this.parsedPos;
 	    }
-	    stackID(stack) {
-	        let id = (stackIDs || (stackIDs = new WeakMap)).get(stack);
-	        if (!id)
-	            stackIDs.set(stack, id = String.fromCodePoint(this.nextStackID++));
-	        return id + stack;
+	    finish() {
+	        return new Tree(this.lang.topNode, this.chunks, this.chunkPos, this.parsedPos - this.ranges[0].from).balance();
 	    }
 	}
-	function pushStackDedup(stack, newStacks) {
-	    for (let i = 0; i < newStacks.length; i++) {
-	        let other = newStacks[i];
-	        if (other.pos == stack.pos && other.sameState(stack)) {
-	            if (newStacks[i].score < stack.score)
-	                newStacks[i] = stack;
-	            return;
-	        }
+	function readToken(token, stream, state) {
+	    stream.start = stream.pos;
+	    for (let i = 0; i < 10; i++) {
+	        let result = token(stream, state);
+	        if (stream.pos > stream.start)
+	            return result;
 	    }
-	    newStacks.push(stack);
+	    throw new Error("Stream parser failed to advance stream.");
 	}
-	class Dialect {
-	    constructor(source, flags, disabled) {
-	        this.source = source;
-	        this.flags = flags;
-	        this.disabled = disabled;
-	    }
-	    allows(term) { return !this.disabled || this.disabled[term] == 0; }
+	const tokenTable = /*@__PURE__*/Object.create(null);
+	const typeArray = [NodeType.none];
+	const nodeSet = /*@__PURE__*/new NodeSet(typeArray);
+	const warned = [];
+	function tokenID(tag) {
+	    return !tag ? 0 : tokenTable[tag] || (tokenTable[tag] = createTokenType(tag));
 	}
-	const id = x => x;
-	/// Context trackers are used to track stateful context (such as
-	/// indentation in the Python grammar, or parent elements in the XML
-	/// grammar) needed by external tokenizers. You declare them in a
-	/// grammar file as `@context exportName from "module"`.
-	///
-	/// Context values should be immutable, and can be updated (replaced)
-	/// on shift or reduce actions.
-	///
-	/// The export used in a `@context` declaration should be of this
-	/// type.
-	class ContextTracker {
-	    /// Define a context tracker.
-	    constructor(spec) {
-	        this.start = spec.start;
-	        this.shift = spec.shift || id;
-	        this.reduce = spec.reduce || id;
-	        this.reuse = spec.reuse || id;
-	        this.hash = spec.hash || (() => 0);
-	        this.strict = spec.strict !== false;
-	    }
+	for (let [legacyName, name] of [
+	    ["variable", "variableName"],
+	    ["variable-2", "variableName.special"],
+	    ["string-2", "string.special"],
+	    ["def", "variableName.definition"],
+	    ["tag", "typeName"],
+	    ["attribute", "propertyName"],
+	    ["type", "typeName"],
+	    ["builtin", "variableName.standard"],
+	    ["qualifier", "modifier"],
+	    ["error", "invalid"],
+	    ["header", "heading"],
+	    ["property", "propertyName"]
+	])
+	    tokenTable[legacyName] = /*@__PURE__*/tokenID(name);
+	function warnForPart(part, msg) {
+	    if (warned.indexOf(part) > -1)
+	        return;
+	    warned.push(part);
+	    console.warn(msg);
 	}
-	/// A parser holds the parse tables for a given grammar, as generated
-	/// by `lezer-generator`.
-	class LRParser extends Parser {
-	    /// @internal
-	    constructor(spec) {
-	        super();
-	        /// @internal
-	        this.wrappers = [];
-	        if (spec.version != 13 /* Version */)
-	            throw new RangeError(`Parser version (${spec.version}) doesn't match runtime version (${13 /* Version */})`);
-	        let nodeNames = spec.nodeNames.split(" ");
-	        this.minRepeatTerm = nodeNames.length;
-	        for (let i = 0; i < spec.repeatNodeCount; i++)
-	            nodeNames.push("");
-	        let topTerms = Object.keys(spec.topRules).map(r => spec.topRules[r][1]);
-	        let nodeProps = [];
-	        for (let i = 0; i < nodeNames.length; i++)
-	            nodeProps.push([]);
-	        function setProp(nodeID, prop, value) {
-	            nodeProps[nodeID].push([prop, prop.deserialize(String(value))]);
+	function createTokenType(tagStr) {
+	    let tag = null;
+	    for (let part of tagStr.split(".")) {
+	        let value = tags[part];
+	        if (!value) {
+	            warnForPart(part, `Unknown highlighting tag ${part}`);
 	        }
-	        if (spec.nodeProps)
-	            for (let propSpec of spec.nodeProps) {
-	                let prop = propSpec[0];
-	                for (let i = 1; i < propSpec.length;) {
-	                    let next = propSpec[i++];
-	                    if (next >= 0) {
-	                        setProp(next, prop, propSpec[i++]);
-	                    }
-	                    else {
-	                        let value = propSpec[i + -next];
-	                        for (let j = -next; j > 0; j--)
-	                            setProp(propSpec[i++], prop, value);
-	                        i++;
-	                    }
-	                }
-	            }
-	        this.nodeSet = new NodeSet(nodeNames.map((name, i) => NodeType.define({
-	            name: i >= this.minRepeatTerm ? undefined : name,
-	            id: i,
-	            props: nodeProps[i],
-	            top: topTerms.indexOf(i) > -1,
-	            error: i == 0,
-	            skipped: spec.skippedNodes && spec.skippedNodes.indexOf(i) > -1
-	        })));
-	        this.strict = false;
-	        this.bufferLength = DefaultBufferLength;
-	        let tokenArray = decodeArray(spec.tokenData);
-	        this.context = spec.context;
-	        this.specialized = new Uint16Array(spec.specialized ? spec.specialized.length : 0);
-	        this.specializers = [];
-	        if (spec.specialized)
-	            for (let i = 0; i < spec.specialized.length; i++) {
-	                this.specialized[i] = spec.specialized[i].term;
-	                this.specializers[i] = spec.specialized[i].get;
-	            }
-	        this.states = decodeArray(spec.states, Uint32Array);
-	        this.data = decodeArray(spec.stateData);
-	        this.goto = decodeArray(spec.goto);
-	        this.maxTerm = spec.maxTerm;
-	        this.tokenizers = spec.tokenizers.map(value => typeof value == "number" ? new TokenGroup(tokenArray, value) : value);
-	        this.topRules = spec.topRules;
-	        this.dialects = spec.dialects || {};
-	        this.dynamicPrecedences = spec.dynamicPrecedences || null;
-	        this.tokenPrecTable = spec.tokenPrec;
-	        this.termNames = spec.termNames || null;
-	        this.maxNode = this.nodeSet.types.length - 1;
-	        this.dialect = this.parseDialect();
-	        this.top = this.topRules[Object.keys(this.topRules)[0]];
-	    }
-	    createParse(input, fragments, ranges) {
-	        let parse = new Parse(this, input, fragments, ranges);
-	        for (let w of this.wrappers)
-	            parse = w(parse, input, fragments, ranges);
-	        return parse;
-	    }
-	    /// Get a goto table entry @internal
-	    getGoto(state, term, loose = false) {
-	        let table = this.goto;
-	        if (term >= table[0])
-	            return -1;
-	        for (let pos = table[term + 1];;) {
-	            let groupTag = table[pos++], last = groupTag & 1;
-	            let target = table[pos++];
-	            if (last && loose)
-	                return target;
-	            for (let end = pos + (groupTag >> 1); pos < end; pos++)
-	                if (table[pos] == state)
-	                    return target;
-	            if (last)
-	                return -1;
+	        else if (typeof value == "function") {
+	            if (!tag)
+	                warnForPart(part, `Modifier ${part} used at start of tag`);
+	            else
+	                tag = value(tag);
+	        }
+	        else {
+	            if (tag)
+	                warnForPart(part, `Tag ${part} used as modifier`);
+	            else
+	                tag = value;
 	        }
 	    }
-	    /// Check if this state has an action for a given terminal @internal
-	    hasAction(state, terminal) {
-	        let data = this.data;
-	        for (let set = 0; set < 2; set++) {
-	            for (let i = this.stateSlot(state, set ? 2 /* Skip */ : 1 /* Actions */), next;; i += 3) {
-	                if ((next = data[i]) == 65535 /* End */) {
-	                    if (data[i + 1] == 1 /* Next */)
-	                        next = data[i = pair(data, i + 2)];
-	                    else if (data[i + 1] == 2 /* Other */)
-	                        return pair(data, i + 2);
-	                    else
-	                        break;
-	                }
-	                if (next == terminal || next == 0 /* Err */)
-	                    return pair(data, i + 1);
-	            }
-	        }
+	    if (!tag)
 	        return 0;
-	    }
-	    /// @internal
-	    stateSlot(state, slot) {
-	        return this.states[(state * 6 /* Size */) + slot];
-	    }
-	    /// @internal
-	    stateFlag(state, flag) {
-	        return (this.stateSlot(state, 0 /* Flags */) & flag) > 0;
-	    }
-	    /// @internal
-	    validAction(state, action) {
-	        if (action == this.stateSlot(state, 4 /* DefaultReduce */))
-	            return true;
-	        for (let i = this.stateSlot(state, 1 /* Actions */);; i += 3) {
-	            if (this.data[i] == 65535 /* End */) {
-	                if (this.data[i + 1] == 1 /* Next */)
-	                    i = pair(this.data, i + 2);
-	                else
-	                    return false;
-	            }
-	            if (action == pair(this.data, i + 1))
-	                return true;
-	        }
-	    }
-	    /// Get the states that can follow this one through shift actions or
-	    /// goto jumps. @internal
-	    nextStates(state) {
-	        let result = [];
-	        for (let i = this.stateSlot(state, 1 /* Actions */);; i += 3) {
-	            if (this.data[i] == 65535 /* End */) {
-	                if (this.data[i + 1] == 1 /* Next */)
-	                    i = pair(this.data, i + 2);
-	                else
-	                    break;
-	            }
-	            if ((this.data[i + 2] & (65536 /* ReduceFlag */ >> 16)) == 0) {
-	                let value = this.data[i + 1];
-	                if (!result.some((v, i) => (i & 1) && v == value))
-	                    result.push(this.data[i], value);
-	            }
-	        }
-	        return result;
-	    }
-	    /// @internal
-	    overrides(token, prev) {
-	        let iPrev = findOffset(this.data, this.tokenPrecTable, prev);
-	        return iPrev < 0 || findOffset(this.data, this.tokenPrecTable, token) < iPrev;
-	    }
-	    /// Configure the parser. Returns a new parser instance that has the
-	    /// given settings modified. Settings not provided in `config` are
-	    /// kept from the original parser.
-	    configure(config) {
-	        // Hideous reflection-based kludge to make it easy to create a
-	        // slightly modified copy of a parser.
-	        let copy = Object.assign(Object.create(LRParser.prototype), this);
-	        if (config.props)
-	            copy.nodeSet = this.nodeSet.extend(...config.props);
-	        if (config.top) {
-	            let info = this.topRules[config.top];
-	            if (!info)
-	                throw new RangeError(`Invalid top rule name ${config.top}`);
-	            copy.top = info;
-	        }
-	        if (config.tokenizers)
-	            copy.tokenizers = this.tokenizers.map(t => {
-	                let found = config.tokenizers.find(r => r.from == t);
-	                return found ? found.to : t;
-	            });
-	        if (config.contextTracker)
-	            copy.context = config.contextTracker;
-	        if (config.dialect)
-	            copy.dialect = this.parseDialect(config.dialect);
-	        if (config.strict != null)
-	            copy.strict = config.strict;
-	        if (config.wrap)
-	            copy.wrappers = copy.wrappers.concat(config.wrap);
-	        if (config.bufferLength != null)
-	            copy.bufferLength = config.bufferLength;
-	        return copy;
-	    }
-	    /// Returns the name associated with a given term. This will only
-	    /// work for all terms when the parser was generated with the
-	    /// `--names` option. By default, only the names of tagged terms are
-	    /// stored.
-	    getName(term) {
-	        return this.termNames ? this.termNames[term] : String(term <= this.maxNode && this.nodeSet.types[term].name || term);
-	    }
-	    /// The eof term id is always allocated directly after the node
-	    /// types. @internal
-	    get eofTerm() { return this.maxNode + 1; }
-	    /// The type of top node produced by the parser.
-	    get topNode() { return this.nodeSet.types[this.top[1]]; }
-	    /// @internal
-	    dynamicPrecedence(term) {
-	        let prec = this.dynamicPrecedences;
-	        return prec == null ? 0 : prec[term] || 0;
-	    }
-	    /// @internal
-	    parseDialect(dialect) {
-	        let values = Object.keys(this.dialects), flags = values.map(() => false);
-	        if (dialect)
-	            for (let part of dialect.split(" ")) {
-	                let id = values.indexOf(part);
-	                if (id >= 0)
-	                    flags[id] = true;
-	            }
-	        let disabled = null;
-	        for (let i = 0; i < values.length; i++)
-	            if (!flags[i]) {
-	                for (let j = this.dialects[values[i]], id; (id = this.data[j++]) != 65535 /* End */;)
-	                    (disabled || (disabled = new Uint8Array(this.maxTerm + 1)))[id] = 1;
-	            }
-	        return new Dialect(dialect, flags, disabled);
-	    }
-	    /// (used by the output of the parser generator) @internal
-	    static deserialize(spec) {
-	        return new LRParser(spec);
-	    }
+	    let name = tagStr.replace(/ /g, "_"), type = NodeType.define({
+	        id: typeArray.length,
+	        name,
+	        props: [styleTags({ [name]: tag })]
+	    });
+	    typeArray.push(type);
+	    return type.id;
 	}
-	function pair(data, off) { return data[off] | (data[off + 1] << 16); }
-	function findOffset(data, start, term) {
-	    for (let i = start, next; (next = data[i]) != 65535 /* End */; i++)
-	        if (next == term)
-	            return i - start;
-	    return -1;
-	}
-	function findFinished(stacks) {
-	    let best = null;
-	    for (let stack of stacks) {
-	        let stopped = stack.p.stoppedAt;
-	        if ((stack.pos == stack.p.stream.end || stopped != null && stack.pos > stopped) &&
-	            stack.p.parser.stateFlag(stack.state, 2 /* Accepting */) &&
-	            (!best || best.score < stack.score))
-	            best = stack;
-	    }
-	    return best;
+	function docID(data) {
+	    let type = NodeType.define({ id: typeArray.length, name: "Document", props: [languageDataProp.add(() => data)] });
+	    typeArray.push(type);
+	    return type;
 	}
 
-	// This file was generated by lezer-generator. You probably shouldn't edit it.
-	const noSemi = 271,
-	  incdec = 1,
-	  incdecPrefix = 2,
-	  templateContent = 272,
-	  templateDollarBrace = 273,
-	  templateEnd = 274,
-	  insertSemi = 275,
-	  TSExtends = 3,
-	  spaces = 277,
-	  newline = 278,
-	  LineComment = 4,
-	  BlockComment = 5,
-	  Dialect_ts = 1;
+	function mkGas(arch) {
+	  // If an architecture is specified, its initialization function may
+	  // populate this array with custom parsing functions which will be
+	  // tried in the event that the standard functions do not find a match.
+	  var custom = [];
 
-	/* Hand-written tokenizers for JavaScript tokens that can't be
-	   expressed by lezer's built-in tokenizer. */
+	  // The symbol used to start a line comment changes based on the target
+	  // architecture.
+	  // If no architecture is pased in "parserConfig" then only multiline
+	  // comments will have syntax support.
+	  var lineCommentStartSymbol = "";
 
-	const space = [9, 10, 11, 12, 13, 32, 133, 160, 5760, 8192, 8193, 8194, 8195, 8196, 8197, 8198, 8199, 8200,
-	               8201, 8202, 8232, 8233, 8239, 8287, 12288];
+	  // These directives are architecture independent.
+	  // Machine specific directives should go in their respective
+	  // architecture initialization function.
+	  // Reference:
+	  // http://sourceware.org/binutils/docs/as/Pseudo-Ops.html#Pseudo-Ops
+	  var directives = {
+	    ".abort" : "builtin",
+	    ".align" : "builtin",
+	    ".altmacro" : "builtin",
+	    ".ascii" : "builtin",
+	    ".asciz" : "builtin",
+	    ".balign" : "builtin",
+	    ".balignw" : "builtin",
+	    ".balignl" : "builtin",
+	    ".bundle_align_mode" : "builtin",
+	    ".bundle_lock" : "builtin",
+	    ".bundle_unlock" : "builtin",
+	    ".byte" : "builtin",
+	    ".cfi_startproc" : "builtin",
+	    ".comm" : "builtin",
+	    ".data" : "builtin",
+	    ".def" : "builtin",
+	    ".desc" : "builtin",
+	    ".dim" : "builtin",
+	    ".double" : "builtin",
+	    ".eject" : "builtin",
+	    ".else" : "builtin",
+	    ".elseif" : "builtin",
+	    ".end" : "builtin",
+	    ".endef" : "builtin",
+	    ".endfunc" : "builtin",
+	    ".endif" : "builtin",
+	    ".equ" : "builtin",
+	    ".equiv" : "builtin",
+	    ".eqv" : "builtin",
+	    ".err" : "builtin",
+	    ".error" : "builtin",
+	    ".exitm" : "builtin",
+	    ".extern" : "builtin",
+	    ".fail" : "builtin",
+	    ".file" : "builtin",
+	    ".fill" : "builtin",
+	    ".float" : "builtin",
+	    ".func" : "builtin",
+	    ".global" : "builtin",
+	    ".gnu_attribute" : "builtin",
+	    ".hidden" : "builtin",
+	    ".hword" : "builtin",
+	    ".ident" : "builtin",
+	    ".if" : "builtin",
+	    ".incbin" : "builtin",
+	    ".include" : "builtin",
+	    ".int" : "builtin",
+	    ".internal" : "builtin",
+	    ".irp" : "builtin",
+	    ".irpc" : "builtin",
+	    ".lcomm" : "builtin",
+	    ".lflags" : "builtin",
+	    ".line" : "builtin",
+	    ".linkonce" : "builtin",
+	    ".list" : "builtin",
+	    ".ln" : "builtin",
+	    ".loc" : "builtin",
+	    ".loc_mark_labels" : "builtin",
+	    ".local" : "builtin",
+	    ".long" : "builtin",
+	    ".macro" : "builtin",
+	    ".mri" : "builtin",
+	    ".noaltmacro" : "builtin",
+	    ".nolist" : "builtin",
+	    ".octa" : "builtin",
+	    ".offset" : "builtin",
+	    ".org" : "builtin",
+	    ".p2align" : "builtin",
+	    ".popsection" : "builtin",
+	    ".previous" : "builtin",
+	    ".print" : "builtin",
+	    ".protected" : "builtin",
+	    ".psize" : "builtin",
+	    ".purgem" : "builtin",
+	    ".pushsection" : "builtin",
+	    ".quad" : "builtin",
+	    ".reloc" : "builtin",
+	    ".rept" : "builtin",
+	    ".sbttl" : "builtin",
+	    ".scl" : "builtin",
+	    ".section" : "builtin",
+	    ".set" : "builtin",
+	    ".short" : "builtin",
+	    ".single" : "builtin",
+	    ".size" : "builtin",
+	    ".skip" : "builtin",
+	    ".sleb128" : "builtin",
+	    ".space" : "builtin",
+	    ".stab" : "builtin",
+	    ".string" : "builtin",
+	    ".struct" : "builtin",
+	    ".subsection" : "builtin",
+	    ".symver" : "builtin",
+	    ".tag" : "builtin",
+	    ".text" : "builtin",
+	    ".title" : "builtin",
+	    ".type" : "builtin",
+	    ".uleb128" : "builtin",
+	    ".val" : "builtin",
+	    ".version" : "builtin",
+	    ".vtable_entry" : "builtin",
+	    ".vtable_inherit" : "builtin",
+	    ".warning" : "builtin",
+	    ".weak" : "builtin",
+	    ".weakref" : "builtin",
+	    ".word" : "builtin"
+	  };
 
-	const braceR = 125, braceL = 123, semicolon = 59, slash = 47, star = 42,
-	      plus = 43, minus = 45, dollar = 36, backtick = 96, backslash = 92;
+	  var registers = {};
 
-	const trackNewline = new ContextTracker({
-	  start: false,
-	  shift(context, term) {
-	    return term == LineComment || term == BlockComment || term == spaces ? context : term == newline
-	  },
-	  strict: false
-	});
+	  function x86() {
+	    lineCommentStartSymbol = "#";
 
-	const insertSemicolon = new ExternalTokenizer((input, stack) => {
-	  let {next} = input;
-	  if ((next == braceR || next == -1 || stack.context) && stack.canShift(insertSemi))
-	    input.acceptToken(insertSemi);
-	}, {contextual: true, fallback: true});
+	    registers.ax  = "variable";
+	    registers.eax = "variableName.special";
+	    registers.rax = "variableName.special";
 
-	const noSemicolon = new ExternalTokenizer((input, stack) => {
-	  let {next} = input, after;
-	  if (space.indexOf(next) > -1) return
-	  if (next == slash && ((after = input.peek(1)) == slash || after == star)) return
-	  if (next != braceR && next != semicolon && next != -1 && !stack.context && stack.canShift(noSemi))
-	    input.acceptToken(noSemi);
-	}, {contextual: true});
+	    registers.bx  = "variable";
+	    registers.ebx = "variableName.special";
+	    registers.rbx = "variableName.special";
 
-	const incdecToken = new ExternalTokenizer((input, stack) => {
-	  let {next} = input;
-	  if (next == plus || next == minus) {
-	    input.advance();
-	    if (next == input.next) {
-	      input.advance();
-	      let mayPostfix = !stack.context && stack.canShift(incdec);
-	      input.acceptToken(mayPostfix ? incdec : incdecPrefix);
-	    }
+	    registers.cx  = "variable";
+	    registers.ecx = "variableName.special";
+	    registers.rcx = "variableName.special";
+
+	    registers.dx  = "variable";
+	    registers.edx = "variableName.special";
+	    registers.rdx = "variableName.special";
+
+	    registers.si  = "variable";
+	    registers.esi = "variableName.special";
+	    registers.rsi = "variableName.special";
+
+	    registers.di  = "variable";
+	    registers.edi = "variableName.special";
+	    registers.rdi = "variableName.special";
+
+	    registers.sp  = "variable";
+	    registers.esp = "variableName.special";
+	    registers.rsp = "variableName.special";
+
+	    registers.bp  = "variable";
+	    registers.ebp = "variableName.special";
+	    registers.rbp = "variableName.special";
+
+	    registers.ip  = "variable";
+	    registers.eip = "variableName.special";
+	    registers.rip = "variableName.special";
+
+	    registers.cs  = "keyword";
+	    registers.ds  = "keyword";
+	    registers.ss  = "keyword";
+	    registers.es  = "keyword";
+	    registers.fs  = "keyword";
+	    registers.gs  = "keyword";
 	  }
-	}, {contextual: true});
 
-	const template = new ExternalTokenizer(input => {
-	  for (let afterDollar = false, i = 0;; i++) {
-	    let {next} = input;
-	    if (next < 0) {
-	      if (i) input.acceptToken(templateContent);
-	      break
-	    } else if (next == backtick) {
-	      if (i) input.acceptToken(templateContent);
-	      else input.acceptToken(templateEnd, 1);
-	      break
-	    } else if (next == braceL && afterDollar) {
-	      if (i == 1) input.acceptToken(templateDollarBrace, 1);
-	      else input.acceptToken(templateContent, -1);
-	      break
-	    } else if (next == 10 /* "\n" */ && i) {
-	      // Break up template strings on lines, to avoid huge tokens
-	      input.advance();
-	      input.acceptToken(templateContent);
-	      break
-	    } else if (next == backslash) {
-	      input.advance();
-	    }
-	    afterDollar = next == dollar;
-	    input.advance();
+	  function armv6() {
+	    // Reference:
+	    // http://infocenter.arm.com/help/topic/com.arm.doc.qrc0001l/QRC0001_UAL.pdf
+	    // http://infocenter.arm.com/help/topic/com.arm.doc.ddi0301h/DDI0301H_arm1176jzfs_r0p7_trm.pdf
+	    lineCommentStartSymbol = "@";
+	    directives.syntax = "builtin";
+
+	    registers.r0  = "variable";
+	    registers.r1  = "variable";
+	    registers.r2  = "variable";
+	    registers.r3  = "variable";
+	    registers.r4  = "variable";
+	    registers.r5  = "variable";
+	    registers.r6  = "variable";
+	    registers.r7  = "variable";
+	    registers.r8  = "variable";
+	    registers.r9  = "variable";
+	    registers.r10 = "variable";
+	    registers.r11 = "variable";
+	    registers.r12 = "variable";
+
+	    registers.sp  = "variableName.special";
+	    registers.lr  = "variableName.special";
+	    registers.pc  = "variableName.special";
+	    registers.r13 = registers.sp;
+	    registers.r14 = registers.lr;
+	    registers.r15 = registers.pc;
+
+	    custom.push(function(ch, stream) {
+	      if (ch === '#') {
+	        stream.eatWhile(/\w/);
+	        return "number";
+	      }
+	    });
 	  }
-	});
 
-	function tsExtends(value, stack) {
-	  return value == "extends" && stack.dialectEnabled(Dialect_ts) ? TSExtends : -1
-	}
+	  if (arch === "x86") {
+	    x86();
+	  } else if (arch === "arm" || arch === "armv6") {
+	    armv6();
+	  }
 
-	// This file was generated by lezer-generator. You probably shouldn't edit it.
-	const spec_identifier = {__proto__:null,export:16, as:21, from:25, default:30, async:35, function:36, this:46, true:54, false:54, void:60, typeof:64, null:78, super:80, new:114, await:131, yield:133, delete:134, class:144, extends:146, public:183, private:183, protected:183, readonly:185, in:204, instanceof:206, const:208, import:240, keyof:291, unique:295, infer:301, is:335, abstract:355, implements:357, type:359, let:362, var:364, interface:371, enum:375, namespace:381, module:383, declare:387, global:391, for:412, of:421, while:424, with:428, do:432, if:436, else:438, switch:442, case:448, try:454, catch:456, finally:458, return:462, throw:466, break:470, continue:474, debugger:478};
-	const spec_word = {__proto__:null,async:101, get:103, set:105, public:153, private:153, protected:153, static:155, abstract:157, readonly:161, new:339};
-	const spec_LessThan = {__proto__:null,"<":121};
-	const parser = LRParser.deserialize({
-	  version: 13,
-	  states: "$-tO`QYOOO&}Q!LdO'#CgO'UOSO'#DSO)^QYO'#DXO)nQYO'#DdO)uQYO'#DnO-lQYO'#DtOOQO'#EU'#EUO.PQWO'#ETO.UQWO'#ETO0TQ!LdO'#ImO2kQ!LdO'#InO3XQWO'#ErO3^QpO'#FXOOQ!LS'#Ez'#EzO3fO!bO'#EzO3tQWO'#F`O5RQWO'#F_OOQ!LS'#In'#InOOQ!LQ'#Im'#ImOOQQ'#JV'#JVO5WQWO'#HfO5]Q!LYO'#HgOOQQ'#I_'#I_OOQQ'#Hh'#HhQ`QYOOO)uQYO'#DfO5eQWO'#GSO5jQ#tO'#ClO5xQWO'#ESO6TQ#tO'#EyO6oQWO'#GSO6tQWO'#GWO7PQWO'#GWO7_QWO'#GZO7_QWO'#G[O7_QWO'#G^O5eQWO'#GaO8OQWO'#GdO9^QWO'#CcO9nQWO'#GqO9vQWO'#GwO9vQWO'#GyO`QYO'#G{O9vQWO'#G}O9vQWO'#HQO9{QWO'#HWO:QQ!LZO'#H[O)uQYO'#H^O:]Q!LZO'#H`O:hQ!LZO'#HbO5]Q!LYO'#HdO)uQYO'#IoOOOS'#Hj'#HjO:sOSO,59nOOQ!LS,59n,59nO=UQbO'#CgO=`QYO'#HkO=mQWO'#IpO?lQbO'#IpO'aQYO'#IpO?sQWO,59sO@ZQ&jO'#D^OASQWO'#EUOAaQWO'#IzOAlQWO'#IyOAtQWO,5:rOAyQWO'#IxOBQQWO'#DuO5jQ#tO'#ESOB`QWO'#ESOBkQ`O'#EyOOQ!LS,5:O,5:OOBsQYO,5:OODqQ!LdO,5:YOE_QWO,5:`OExQ!LYO'#IwO6tQWO'#IvOFPQWO'#IvOFXQWO,5:qOF^QWO'#IvOFlQYO,5:oOHiQWO'#EQOIsQWO,5:oOKSQWO'#DhOKZQYO'#DmOKeQ&jO,5:xO)uQYO,5:xOOQQ'#Ej'#EjOOQQ'#El'#ElO)uQYO,5:yO)uQYO,5:yO)uQYO,5:yO)uQYO,5:yO)uQYO,5:yO)uQYO,5:yO)uQYO,5:yO)uQYO,5:yO)uQYO,5:yO)uQYO,5:yO)uQYO,5:yOOQQ'#Ep'#EpOKjQYO,5;ZOOQ!LS,5;`,5;`OOQ!LS,5;a,5;aOMgQWO,5;aOOQ!LS,5;b,5;bO)uQYO'#HuOMlQ!LYO,5;{ONWQWO,5:yO)uQYO,5;^ONpQpO'#JOON_QpO'#JOONwQpO'#JOO! YQpO,5;iOOQO,5;s,5;sO! hQYO'#FZOOOO'#Ht'#HtO3fO!bO,5;fO! oQpO'#F]OOQ!LS,5;f,5;fO!!]Q,UO'#CqOOQ!LS'#Ct'#CtO!!pQWO'#CtO!!uOSO'#CxO!#cQ#tO,5;xO!#jQWO,5;zO!$vQWO'#FjO!%TQWO'#FkO!%YQWO'#FoO!&[Q&jO'#FsO!&}Q,UO'#IhOOQ!LS'#Ih'#IhO!'XQWO'#IgO!'gQWO'#IfOOQ!LS'#Cr'#CrOOQ!LS'#Cy'#CyO!'oQWO'#C{OIxQWO'#FbOIxQWO'#FdO!'tQWO'#FfO!'yQWO'#FgO!(OQWO'#FmOIxQWO'#FrO!(TQWO'#EVO!(lQWO,5;yO`QYO,5>QOOQQ'#Ib'#IbOOQQ,5>R,5>ROOQQ-E;f-E;fO!*hQ!LdO,5:QOOQ!LQ'#Co'#CoO!+XQ#tO,5<nOOQO'#Ce'#CeO!+jQWO'#CpO!+rQ!LYO'#IcO5RQWO'#IcO9{QWO,59WO!,QQpO,59WO!,YQ#tO,59WO5jQ#tO,59WO!,eQWO,5:oO!,mQWO'#GpO!,uQWO'#JZO)uQYO,5;cOKeQ&jO,5;eO!,}QWO,5=ZO!-SQWO,5=ZO!-XQWO,5=ZO5]Q!LYO,5=ZO5eQWO,5<nO!-gQWO'#EWO!-xQ&jO'#EXOOQ!LQ'#Ix'#IxO!.ZQ!LYO'#JWO5]Q!LYO,5<rO7_QWO,5<xOOQO'#Cq'#CqO!.fQpO,5<uO!.nQ#tO,5<vO!.yQWO,5<xO!/OQ`O,5<{O9{QWO'#GfO5eQWO'#GhO!/WQWO'#GhO5jQ#tO'#GkO!/]QWO'#GkOOQQ,5=O,5=OO!/bQWO'#GlO!/jQWO'#ClO!/oQWO,58}O!/yQWO,58}O!1xQYO,58}OOQQ,58},58}O!2VQ!LYO,58}O)uQYO,58}O!2bQYO'#GsOOQQ'#Gt'#GtOOQQ'#Gu'#GuO`QYO,5=]O!2rQWO,5=]O)uQYO'#DtO`QYO,5=cO`QYO,5=eO!2wQWO,5=gO`QYO,5=iO!2|QWO,5=lO!3RQYO,5=rOOQQ,5=v,5=vO)uQYO,5=vO5]Q!LYO,5=xOOQQ,5=z,5=zO!7PQWO,5=zOOQQ,5=|,5=|O!7PQWO,5=|OOQQ,5>O,5>OO!7UQ`O,5?ZOOOS-E;h-E;hOOQ!LS1G/Y1G/YO!7ZQbO,5>VO)uQYO,5>VOOQO-E;i-E;iO!7eQWO,5?[O!7mQbO,5?[O!7tQWO,5?eOOQ!LS1G/_1G/_O!7|QpO'#DQOOQO'#Ir'#IrO)uQYO'#IrO!8kQpO'#IrO!9YQpO'#D_O!9kQ&jO'#D_O!;sQYO'#D_O!;zQWO'#IqO!<SQWO,59xO!<XQWO'#EYO!<gQWO'#I{O!<oQWO,5:sO!=VQ&jO'#D_O)uQYO,5?fO!=aQWO'#HpO!7tQWO,5?eOOQ!LQ1G0^1G0^O!>gQ&jO'#DxOOQ!LS,5:a,5:aO)uQYO,5:aOHiQWO,5:aO!>nQWO,5:aO9{QWO,5:nO!,QQpO,5:nO!,YQ#tO,5:nO5jQ#tO,5:nOOQ!LS1G/j1G/jOOQ!LS1G/z1G/zOOQ!LQ'#EP'#EPO)uQYO,5?cO!>yQ!LYO,5?cO!?[Q!LYO,5?cO!?cQWO,5?bO!?kQWO'#HrO!?cQWO,5?bOOQ!LQ1G0]1G0]O6tQWO,5?bOOQ!LS1G0Z1G0ZO!@VQ!LdO1G0ZO!@vQ!LbO,5:lOOQ!LS'#Fi'#FiO!AdQ!LdO'#IhOFlQYO1G0ZO!CcQ#tO'#IsO!CmQWO,5:SO!CrQbO'#ItO)uQYO'#ItO!C|QWO,5:XOOQ!LS'#DQ'#DQOOQ!LS1G0d1G0dO!DRQWO1G0dO!FdQ!LdO1G0eO!FkQ!LdO1G0eO!IOQ!LdO1G0eO!IVQ!LdO1G0eO!K^Q!LdO1G0eO!KqQ!LdO1G0eO!NbQ!LdO1G0eO!NiQ!LdO1G0eO#!|Q!LdO1G0eO##TQ!LdO1G0eO#$xQ!LdO1G0eO#'rQ7^O'#CgO#)mQ7^O1G0uO#+hQ7^O'#InOOQ!LS1G0{1G0{O#+{Q!LdO,5>aOOQ!LQ-E;s-E;sO#,lQ!LdO1G0eOOQ!LS1G0e1G0eO#.nQ!LdO1G0xO#/_QpO,5;kO#/dQpO,5;lO#/iQpO'#FSO#/}QWO'#FROOQO'#JP'#JPOOQO'#Hs'#HsO#0SQpO1G1TOOQ!LS1G1T1G1TOOQO1G1^1G1^O#0bQ7^O'#ImO#0lQWO,5;uOKjQYO,5;uOOOO-E;r-E;rOOQ!LS1G1Q1G1QOOQ!LS,5;w,5;wO#0qQpO,5;wOOQ!LS,59`,59`OHiQWO'#IjOOOS'#Hi'#HiO#0vOSO,59dOOQ!LS,59d,59dO)uQYO1G1dOKeQ&jO'#HwO#1RQWO,5<]OOQ!LS,5<Y,5<YOOQO'#F}'#F}OIxQWO,5<hOOQO'#GP'#GPOIxQWO,5<jOIxQWO,5<lOOQO1G1f1G1fO#1^Q`O'#CoO#1qQ`O,5<UO#1xQWO'#JSO5eQWO'#JSO#2WQWO,5<WOIxQWO,5<VO#2]Q`O'#FiO#2jQ`O'#JTO#2tQWO'#JTOHiQWO'#JTO#2yQWO,5<ZOOQ!LQ'#Dc'#DcO#3OQWO'#FlO#3ZQpO'#FtO!&VQ&jO'#FtO!&VQ&jO'#FvO#3lQWO'#FwO!(OQWO'#FzOOQO'#Hy'#HyO#3qQ&jO,5<_OOQ!LS,5<_,5<_O#3xQ&jO'#FtO#4WQ&jO'#FuO#4`Q&jO'#FuOOQ!LS,5<m,5<mOIxQWO,5?ROIxQWO,5?RO#4eQWO'#HzO#4pQWO,5?QOOQ!LS'#Cg'#CgO#5dQ#tO,59gOOQ!LS,59g,59gO#6VQ#tO,5;|O#6xQ#tO,5<OO#7SQWO,5<QOOQ!LS,5<R,5<RO#7XQWO,5<XO#7^Q#tO,5<^OFlQYO1G1eO#7nQWO1G1eOOQQ1G3l1G3lOOQ!LS1G/l1G/lOMgQWO1G/lOOQQ1G2Y1G2YOHiQWO1G2YO)uQYO1G2YOHiQWO1G2YO#7sQWO1G2YO#8RQWO,59[O#9[QWO'#EQOOQ!LQ,5>},5>}O#9fQ!LYO,5>}OOQQ1G.r1G.rO9{QWO1G.rO!,QQpO1G.rO!,YQ#tO1G.rO#9tQWO1G0ZO#9yQWO'#CgO#:UQWO'#J[O#:^QWO,5=[O#:cQWO'#J[O#:hQWO'#ISO#:vQWO,5?uO#;OQbO1G0}OOQ!LS1G1P1G1PO5eQWO1G2uO#;VQWO1G2uO#;[QWO1G2uO#;aQWO1G2uOOQQ1G2u1G2uO#;fQ#tO1G2YO6tQWO'#IyO6tQWO'#EYO6tQWO'#H|O#;wQ!LYO,5?rOOQQ1G2^1G2^O!.yQWO1G2dOHiQWO1G2aO#<SQWO1G2aOOQQ1G2b1G2bOHiQWO1G2bO#<XQWO1G2bO#<aQ&jO'#G`OOQQ1G2d1G2dO!&VQ&jO'#IOO!/OQ`O1G2gOOQQ1G2g1G2gOOQQ,5=Q,5=QO#<iQ#tO,5=SO5eQWO,5=SO#3lQWO,5=VO5RQWO,5=VO!,QQpO,5=VO!,YQ#tO,5=VO5jQ#tO,5=VO#<zQWO'#JYO#=VQWO,5=WOOQQ1G.i1G.iO#=[Q!LYO1G.iO#=gQWO1G.iO!'oQWO1G.iO5]Q!LYO1G.iO#=lQbO,5?wO#=vQWO,5?wO#>RQYO,5=_O#>YQWO,5=_O6tQWO,5?wOOQQ1G2w1G2wO`QYO1G2wOOQQ1G2}1G2}OOQQ1G3P1G3PO9vQWO1G3RO#>_QYO1G3TO#BVQYO'#HSOOQQ1G3W1G3WO9{QWO1G3^O#BdQWO1G3^O5]Q!LYO1G3bOOQQ1G3d1G3dOOQ!LQ'#Fp'#FpO5]Q!LYO1G3fO5]Q!LYO1G3hOOOS1G4u1G4uO#BlQ`O,5;{O#BtQbO1G3qO#COQWO1G4vO#CWQWO1G5PO#C`QWO,5?^OKjQYO,5:tO6tQWO,5:tO9{QWO,59yOKjQYO,59yO!,QQpO,59yO#CeQ7^O,59yOOQO,5:t,5:tO#CoQ&jO'#HlO#DVQWO,5?]OOQ!LS1G/d1G/dO#D_Q&jO'#HqO#DsQWO,5?gOOQ!LQ1G0_1G0_O!9kQ&jO,59yO#D{QbO1G5QOOQO,5>[,5>[O6tQWO,5>[OOQO-E;n-E;nO#EVQ!LrO'#D}O!&VQ&jO'#DyOOQO'#Ho'#HoO#EqQ&jO,5:dOOQ!LS,5:d,5:dO#ExQ&jO'#DyO#FWQ&jO'#D}O#FlQ&jO'#D}O!&VQ&jO'#D}O#FvQWO1G/{O#F{Q`O1G/{OOQ!LS1G/{1G/{O)uQYO1G/{OHiQWO1G/{OOQ!LS1G0Y1G0YO9{QWO1G0YO!,QQpO1G0YO!,YQ#tO1G0YO#GSQ!LdO1G4}O)uQYO1G4}O#GdQ!LYO1G4}O#GuQWO1G4|O6tQWO,5>^OOQO,5>^,5>^O#G}QWO,5>^OOQO-E;p-E;pO#GuQWO1G4|O#H]Q!LdO,59gO#J[Q!LdO,5;|O#L^Q!LdO,5<OO#N`Q!LdO,5<^OOQ!LS7+%u7+%uO$!hQ!LdO7+%uO$#XQWO'#HmO$#cQWO,5?_OOQ!LS1G/n1G/nO$#kQYO'#HnO$#xQWO,5?`O$$QQbO,5?`OOQ!LS1G/s1G/sOOQ!LS7+&O7+&OO$$[Q7^O,5:YO)uQYO7+&aO$$fQ7^O,5:QOOQO1G1V1G1VOOQO1G1W1G1WO$$sQMhO,5;nOKjQYO,5;mOOQO-E;q-E;qOOQ!LS7+&o7+&oOOQO7+&x7+&xOOOO1G1a1G1aO$%OQWO1G1aOOQ!LS1G1c1G1cO$%TQ`O,5?UOOOS-E;g-E;gOOQ!LS1G/O1G/OO$%[Q!LdO7+'OOOQ!LS,5>c,5>cO$%{QWO,5>cOOQ!LS1G1w1G1wP$&QQWO'#HwPOQ!LS-E;u-E;uO$&qQ#tO1G2SO$'dQ#tO1G2UO$'nQ#tO1G2WOOQ!LS1G1p1G1pO$'uQWO'#HvO$(TQWO,5?nO$(TQWO,5?nO$(]QWO,5?nO$(hQWO,5?nOOQO1G1r1G1rO$(vQ#tO1G1qO$)WQWO'#HxO$)hQWO,5?oOHiQWO,5?oO$)pQ`O,5?oOOQ!LS1G1u1G1uO5]Q!LYO,5<`O5]Q!LYO,5<aO$)zQWO,5<aO#3gQWO,5<aO!,QQpO,5<`O$*PQWO,5<bO5]Q!LYO,5<cO$)zQWO,5<fOOQO-E;w-E;wOOQ!LS1G1y1G1yO!&VQ&jO,5<`O$*XQWO,5<aO!&VQ&jO,5<bO!&VQ&jO,5<aO$*dQ#tO1G4mO$*nQ#tO1G4mOOQO,5>f,5>fOOQO-E;x-E;xOKeQ&jO,59iO)uQYO,59iO$*{QWO1G1lOIxQWO1G1sO$+QQ!LdO7+'POOQ!LS7+'P7+'POFlQYO7+'POOQ!LS7+%W7+%WO$+qQ`O'#JUO#FvQWO7+'tO$+{QWO7+'tO$,TQ`O7+'tOOQQ7+'t7+'tOHiQWO7+'tO)uQYO7+'tOHiQWO7+'tOOQO1G.v1G.vO$,_Q!LbO'#CgO$,oQ!LbO,5<dO$-^QWO,5<dOOQ!LQ1G4i1G4iOOQQ7+$^7+$^O9{QWO7+$^O!,QQpO7+$^OFlQYO7+%uO$-cQWO'#IRO$-nQWO,5?vOOQO1G2v1G2vO5eQWO,5?vOOQO,5>n,5>nOOQO-E<Q-E<QOOQ!LS7+&i7+&iO$-vQWO7+(aO5]Q!LYO7+(aO5eQWO7+(aO$-{QWO7+(aO$.QQWO7+'tOOQ!LQ,5>h,5>hOOQ!LQ-E;z-E;zOOQQ7+(O7+(OO$.`Q!LbO7+'{OHiQWO7+'{O$.jQ`O7+'|OOQQ7+'|7+'|OHiQWO7+'|O$.qQWO'#JXO$.|QWO,5<zOOQO,5>j,5>jOOQO-E;|-E;|OOQQ7+(R7+(RO$/sQ&jO'#GiOOQQ1G2n1G2nOHiQWO1G2nO)uQYO1G2nOHiQWO1G2nO$/zQWO1G2nO$0YQ#tO1G2nO5]Q!LYO1G2qO#3lQWO1G2qO5RQWO1G2qO!,QQpO1G2qO!,YQ#tO1G2qO$0kQWO'#IQO$0vQWO,5?tO$1OQ&jO,5?tOOQ!LQ1G2r1G2rOOQQ7+$T7+$TO$1TQWO7+$TO5]Q!LYO7+$TO$1YQWO7+$TO)uQYO1G5cO)uQYO1G5dO$1_QYO1G2yO$1fQWO1G2yO$1kQYO1G2yO$1rQ!LYO1G5cOOQQ7+(c7+(cO5]Q!LYO7+(mO`QYO7+(oOOQQ'#J_'#J_OOQQ'#IT'#ITO$1|QYO,5=nOOQQ,5=n,5=nO)uQYO'#HTO$2ZQWO'#HVOOQQ7+(x7+(xO$2`QYO7+(xO6tQWO7+(xOOQQ7+(|7+(|OOQQ7+)Q7+)QOOQQ7+)S7+)SOOQO1G4x1G4xO$6ZQ7^O1G0`O$6eQWO1G0`OOQO1G/e1G/eO$6pQ7^O1G/eO9{QWO1G/eOKjQYO'#D_OOQO,5>W,5>WOOQO-E;j-E;jOOQO,5>],5>]OOQO-E;o-E;oO!,QQpO1G/eOOQO1G3v1G3vO9{QWO,5:eOOQO,5:i,5:iO)uQYO,5:iO$6zQ!LYO,5:iO$7VQ!LYO,5:iO!,QQpO,5:eOOQO-E;m-E;mOOQ!LS1G0O1G0OO!&VQ&jO,5:eO$7eQ!LrO,5:iO$8PQ&jO,5:eO!&VQ&jO,5:iO$8_Q&jO,5:iO$8sQ!LYO,5:iOOQ!LS7+%g7+%gO#FvQWO7+%gO#F{Q`O7+%gOOQ!LS7+%t7+%tO9{QWO7+%tO!,QQpO7+%tO$9XQ!LdO7+*iO)uQYO7+*iOOQO1G3x1G3xO6tQWO1G3xO$9iQWO7+*hO$9qQ!LdO1G2SO$;sQ!LdO1G2UO$=uQ!LdO1G1qO$?}Q#tO,5>XOOQO-E;k-E;kO$@XQbO,5>YO)uQYO,5>YOOQO-E;l-E;lO$@cQWO1G4zO$@kQ7^O1G0ZO$BrQ7^O1G0eO$ByQ7^O1G0eO$DzQ7^O1G0eO$ERQ7^O1G0eO$FvQ7^O1G0eO$GZQ7^O1G0eO$IhQ7^O1G0eO$IoQ7^O1G0eO$KpQ7^O1G0eO$KwQ7^O1G0eO$MlQ7^O1G0eO$NPQ!LdO<<I{O$NpQ7^O1G0eO%!`Q7^O'#IhO%$]Q7^O1G0xOKjQYO'#FUOOQO'#JQ'#JQOOQO1G1Y1G1YO%$jQWO1G1XO%$oQ7^O,5>aOOOO7+&{7+&{OOOS1G4p1G4pOOQ!LS1G3}1G3}OIxQWO7+'rO%$yQWO,5>bO5eQWO,5>bOOQO-E;t-E;tO%%XQWO1G5YO%%XQWO1G5YO%%aQWO1G5YO%%lQ`O,5>dO%%vQWO,5>dOHiQWO,5>dOOQO-E;v-E;vO%%{Q`O1G5ZO%&VQWO1G5ZOOQO1G1z1G1zOOQO1G1{1G1{O5]Q!LYO1G1{O$)zQWO1G1{O5]Q!LYO1G1zO%&_QWO1G1|OHiQWO1G1|OOQO1G1}1G1}O5]Q!LYO1G2QO!,QQpO1G1zO#3gQWO1G1{O%&dQWO1G1|O%&lQWO1G1{OIxQWO7+*XOOQ!LS1G/T1G/TO%&wQWO1G/TOOQ!LS7+'W7+'WO%&|Q#tO7+'_O%'^Q!LdO<<JkOOQ!LS<<Jk<<JkOHiQWO'#H{O%'}QWO,5?pOOQQ<<K`<<K`OHiQWO<<K`O#FvQWO<<K`O%(VQWO<<K`O%(_Q`O<<K`OHiQWO1G2OOOQQ<<Gx<<GxO9{QWO<<GxO%(iQ!LdO<<IaOOQ!LS<<Ia<<IaOOQO,5>m,5>mO%)YQWO,5>mOOQO-E<P-E<PO%)_QWO1G5bO%)gQWO<<K{OOQQ<<K{<<K{O%)lQWO<<K{O5]Q!LYO<<K{O)uQYO<<K`OHiQWO<<K`OOQQ<<Kg<<KgO$.`Q!LbO<<KgOOQQ<<Kh<<KhO$.jQ`O<<KhO%)qQ&jO'#H}O%)|QWO,5?sOKjQYO,5?sOOQQ1G2f1G2fO#EVQ!LrO'#D}O!&VQ&jO'#GjOOQO'#IP'#IPO%*UQ&jO,5=TOOQQ,5=T,5=TO#4WQ&jO'#D}O%*]Q&jO'#D}O%*qQ&jO'#D}O%*{Q&jO'#GjO%+ZQWO7+(YO%+`QWO7+(YO%+hQ`O7+(YOOQQ7+(Y7+(YOHiQWO7+(YO)uQYO7+(YOHiQWO7+(YO%+rQWO7+(YOOQQ7+(]7+(]O5]Q!LYO7+(]O#3lQWO7+(]O5RQWO7+(]O!,QQpO7+(]O%,QQWO,5>lOOQO-E<O-E<OOOQO'#Gm'#GmO%,]QWO1G5`O5]Q!LYO<<GoOOQQ<<Go<<GoO%,eQWO<<GoO%,jQWO7+*}O%,oQWO7++OOOQQ7+(e7+(eO%,tQWO7+(eO%,yQYO7+(eO%-QQWO7+(eO)uQYO7+*}O)uQYO7++OOOQQ<<LX<<LXOOQQ<<LZ<<LZOOQQ-E<R-E<ROOQQ1G3Y1G3YO%-VQWO,5=oOOQQ,5=q,5=qO9{QWO<<LdO%-[QWO<<LdOKjQYO7+%zOOQO7+%P7+%PO%-aQ7^O1G5QO9{QWO7+%POOQO1G0P1G0PO%-kQ!LdO1G0TOOQO1G0T1G0TO)uQYO1G0TO%-uQ!LYO1G0TO9{QWO1G0PO!,QQpO1G0PO%.QQ!LYO1G0TO!&VQ&jO1G0PO%.`Q!LYO1G0TO%.tQ!LrO1G0TO%/OQ&jO1G0PO!&VQ&jO1G0TOOQ!LS<<IR<<IROOQ!LS<<I`<<I`O9{QWO<<I`O%/^Q!LdO<<NTOOQO7+)d7+)dO%/nQ!LdO7+'_O%1vQbO1G3tO%2QQ7^O7+%uO%2_Q7^O,59gO%4[Q7^O,5;|O%6XQ7^O,5<OO%8UQ7^O,5<^O%9tQ7^O7+'OO%:RQ7^O7+'PO%:`QWO,5;pOOQO7+&s7+&sO%:eQ#tO<<K^OOQO1G3|1G3|O%:uQWO1G3|O%;QQWO1G3|O%;`QWO7+*tO%;`QWO7+*tOHiQWO1G4OO%;hQ`O1G4OO%;rQWO7+*uOOQO7+'g7+'gO5]Q!LYO7+'gOOQO7+'f7+'fO$)zQWO7+'hO%;zQ`O7+'hOOQO7+'l7+'lO5]Q!LYO7+'fO$)zQWO7+'gO%<RQWO7+'hOHiQWO7+'hO#3gQWO7+'gO%<WQ#tO<<MsOOQ!LS7+$o7+$oO%<bQ`O,5>gOOQO-E;y-E;yO#FvQWOAN@zOOQQAN@zAN@zOHiQWOAN@zO%<lQ!LbO7+'jOOQQAN=dAN=dO5eQWO1G4XO%<yQWO7+*|O5]Q!LYOANAgO%=RQWOANAgOOQQANAgANAgO%=WQWOAN@zO%=`Q`OAN@zOOQQANARANAROOQQANASANASO%=jQWO,5>iOOQO-E;{-E;{O%=uQ7^O1G5_O#3lQWO,5=UO5RQWO,5=UO!,QQpO,5=UOOQO-E;}-E;}OOQQ1G2o1G2oO$7eQ!LrO,5:iO!&VQ&jO,5=UO%>PQ&jO,5=UO%>_Q&jO,5:iOOQQ<<Kt<<KtOHiQWO<<KtO%+ZQWO<<KtO%>sQWO<<KtO%>{Q`O<<KtO)uQYO<<KtOHiQWO<<KtOOQQ<<Kw<<KwO5]Q!LYO<<KwO#3lQWO<<KwO5RQWO<<KwO%?VQ&jO1G4WO%?[QWO7+*zOOQQAN=ZAN=ZO5]Q!LYOAN=ZOOQQ<<Ni<<NiOOQQ<<Nj<<NjOOQQ<<LP<<LPO%?dQWO<<LPO%?iQYO<<LPO%?pQWO<<NiO%?uQWO<<NjOOQQ1G3Z1G3ZOOQQANBOANBOO9{QWOANBOO%?zQ7^O<<IfOOQO<<Hk<<HkOOQO7+%o7+%oO%-kQ!LdO7+%oO)uQYO7+%oOOQO7+%k7+%kO9{QWO7+%kO%@UQ!LYO7+%oO!,QQpO7+%kO%@aQ!LYO7+%oO!&VQ&jO7+%kO%@oQ!LYO7+%oOOQ!LSAN>zAN>zO%ATQ!LdO<<K^O%C]Q7^O<<I{O%CjQ7^O1G1qO%EYQ7^O1G2SO%GVQ7^O1G2UO%ISQ7^O<<JkO%IaQ7^O<<IaOOQO1G1[1G1[OOQO7+)h7+)hO%InQWO7+)hO%IyQWO<<N`O%JRQ`O7+)jOOQO<<KR<<KRO5]Q!LYO<<KSO$)zQWO<<KSOOQO<<KQ<<KQO5]Q!LYO<<KRO%J]Q`O<<KSO$)zQWO<<KROOQQG26fG26fO#FvQWOG26fOOQO7+)s7+)sOOQQG27RG27RO5]Q!LYOG27ROHiQWOG26fOKjQYO1G4TO%JdQWO7+*yO5]Q!LYO1G2pO#3lQWO1G2pO5RQWO1G2pO!,QQpO1G2pO!&VQ&jO1G2pO%.tQ!LrO1G0TO%JlQ&jO1G2pO%+ZQWOANA`OOQQANA`ANA`OHiQWOANA`O%JzQWOANA`O%KSQ`OANA`OOQQANAcANAcO5]Q!LYOANAcO#3lQWOANAcOOQO'#Gn'#GnOOQO7+)r7+)rOOQQG22uG22uOOQQANAkANAkO%K^QWOANAkOOQQANDTANDTOOQQANDUANDUO%KcQYOG27jOOQO<<IZ<<IZO%-kQ!LdO<<IZOOQO<<IV<<IVO)uQYO<<IZO9{QWO<<IVO& ^Q!LYO<<IZO!,QQpO<<IVO& iQ!LYO<<IZO& wQ7^O7+'_OOQO<<MS<<MSOOQOAN@nAN@nO5]Q!LYOAN@nOOQOAN@mAN@mO$)zQWOAN@nO5]Q!LYOAN@mOOQQLD,QLD,QOOQQLD,mLD,mO#FvQWOLD,QO&#gQ7^O7+)oOOQO7+([7+([O5]Q!LYO7+([O#3lQWO7+([O5RQWO7+([O!,QQpO7+([O!&VQ&jO7+([OOQQG26zG26zO%+ZQWOG26zOHiQWOG26zOOQQG26}G26}O5]Q!LYOG26}OOQQG27VG27VO9{QWOLD-UOOQOAN>uAN>uO%-kQ!LdOAN>uOOQOAN>qAN>qO)uQYOAN>uO9{QWOAN>qO&#qQ!LYOAN>uO&#|Q7^O<<K^OOQOG26YG26YO5]Q!LYOG26YOOQOG26XG26XOOQQ!$( l!$( lOOQO<<Kv<<KvO5]Q!LYO<<KvO#3lQWO<<KvO5RQWO<<KvO!,QQpO<<KvOOQQLD,fLD,fO%+ZQWOLD,fOOQQLD,iLD,iOOQQ!$(!p!$(!pOOQOG24aG24aO%-kQ!LdOG24aOOQOG24]G24]O)uQYOG24aOOQOLD+tLD+tOOQOANAbANAbO5]Q!LYOANAbO#3lQWOANAbO5RQWOANAbOOQQ!$(!Q!$(!QOOQOLD){LD){O%-kQ!LdOLD){OOQOG26|G26|O5]Q!LYOG26|O#3lQWOG26|OOQO!$'Mg!$'MgOOQOLD,hLD,hO5]Q!LYOLD,hOOQO!$(!S!$(!SOKjQYO'#DnO&%lQbO'#ImOKjQYO'#DfO&%sQ!LdO'#CgO&&^QbO'#CgO&&nQYO,5:oOKjQYO,5:yOKjQYO,5:yOKjQYO,5:yOKjQYO,5:yOKjQYO,5:yOKjQYO,5:yOKjQYO,5:yOKjQYO,5:yOKjQYO,5:yOKjQYO,5:yOKjQYO,5:yOKjQYO'#HuO&(kQWO,5;{O&)}QWO,5:yOKjQYO,5;^O!'oQWO'#C{O!'oQWO'#C{OHiQWO'#FbO&(sQWO'#FbOHiQWO'#FdO&(sQWO'#FdOHiQWO'#FrO&(sQWO'#FrOKjQYO,5?fO&&nQYO1G0ZO&*UQ7^O'#CgOKjQYO1G1dOHiQWO,5<hO&(sQWO,5<hOHiQWO,5<jO&(sQWO,5<jOHiQWO,5<VO&(sQWO,5<VO&&nQYO1G1eOKjQYO7+&aOHiQWO1G1sO&(sQWO1G1sO&&nQYO7+'PO&&nQYO7+%uOHiQWO7+'rO&(sQWO7+'rO&*`QWO'#ETO&*eQWO'#ETO&*mQWO'#ErO&*rQWO'#IzO&*}QWO'#IxO&+YQWO,5:oO&+_Q#tO,5;xO&+fQWO'#FkO&+kQWO'#FkO&+pQWO,5;yO&+xQWO,5:oO&,QQ7^O1G0uO&,XQWO,5<XO&,^QWO,5<XO&,cQWO1G1eO&,hQWO1G0ZO&,mQ#tO1G2WO&,tQ#tO1G2WO3tQWO'#F`O5RQWO'#F_OB`QWO'#ESOKjQYO,5;ZO!(OQWO'#FmO!(OQWO'#FmOIxQWO,5<lOIxQWO,5<l",
-	  stateData: "&-p~O'POS'QOSSOSTOS~OPTOQTOWwO]bO^gOamOblOgbOiTOjbOkbOnTOpTOuROwbOxbOybO!PSO!ZjO!`UO!cTO!dTO!eTO!fTO!gTO!jkO#[qO#lnO#p]O$woO$yrO${pO$|pO%PsO%RtO%UuO%VuO%XvO%fxO%lyO%nzO%p{O%r|O%u}O%{!OO&P!PO&R!QO&T!RO&V!SO&X!TO'SPO']QO'u`O~OPZXYZX^ZXiZXrZXsZXuZX}ZX!]ZX!^ZX!`ZX!fZX!uZX#PcX#SZX#TZX#UZX#VZX#WZX#XZX#YZX#ZZX#]ZX#_ZX#aZX#bZX#gZX&}ZX']ZX'iZX'pZX'qZX~O!X$dX~P$wO&z!VO&{!UO&|!XO~OPTOQTO]bOa!hOb!gOgbOiTOjbOkbOnTOpTOuROwbOxbOybO!P!`O!ZjO!`UO!cTO!dTO!eTO!fTO!gTO!j!fO#l!iO#p]O'S!YO']QO'u`O~O|!^O}!ZOz'dPz'mP~P'aO!O!jO~P`OPTOQTO]bOa!hOb!gOgbOiTOjbOkbOnTOpTOuROwbOxbOybO!P!`O!ZjO!`UO!cTO!dTO!eTO!fTO!gTO!j!fO#l!iO#p]O'S8lO']QO'u`O~OPTOQTO]bOa!hOb!gOgbOiTOjbOkbOnTOpTOuROwbOxbOybO!P!`O!ZjO!`UO!cTO!dTO!eTO!fTO!gTO!j!fO#l!iO#p]O']QO'u`O~O|!oO!}!rO#O!oO'S8mO!_'jP~P+rO#P!sO~O!X!tO#P!sO~OP#ZOY#aOi#OOr!xOs!xOu!yO}#_O!]#QO!^!vO!`!wO!f#ZO#S!|O#T!}O#U!}O#V!}O#W#PO#X#QO#Y#QO#Z#QO#]#RO#_#TO#a#VO#b#WO']QO'i#XO'p!zO'q!{O~O^'aX&}'aX!_'aXz'aX!P'aX$x'aX!X'aX~P.^O!u#bO#g#bOP'bXY'bX^'bXi'bXr'bXs'bXu'bX}'bX!]'bX!^'bX!`'bX!f'bX#S'bX#T'bX#U'bX#V'bX#W'bX#X'bX#Z'bX#]'bX#_'bX#a'bX#b'bX']'bX'i'bX'p'bX'q'bX~O#Y'bX&}'bXz'bX!_'bX'_'bX!P'bX$x'bX!X'bX~P0nO!u#bO~O#r#cO#y#gO~O!P#hO#p]O#|#iO$O#kO~O]#nOg#{Oi#oOj#nOk#nOn#|Op#}Ou#uO!P#vO!Z$SO!`#sO#O$TO#l$QO$V$OO$X$PO$[$RO'S#mO']#pO'W'YP~O!`$UO~O!X$WO~O^$XO&}$XO~O'S$]O~O!`$UO'S$]O'T$_O'X$`O~Ob$fO!`$UO'S$]O~O]$oOr$kO!P$hO!`$jO$y$nO'S$]O'T$_O['}P~O!j$pO~Ou$qO!P$rO'S$]O~Ou$qO!P$rO%R$vO'S$]O~O'S$wO~O#[qO$yrO${pO$|pO%PsO%RtO%UuO%VuO~Oa%QOb%PO!j$}O$w%OO%Z$|O~P7dOa%TOblO!P%SO!jkO#[qO$woO${pO$|pO%PsO%RtO%UuO%VuO%XvO~O_%WO!u%ZO$y%UO'T$_O~P8cO!`%[O!c%`O~O!`%aO~O!PSO~O^$XO&y%iO&}$XO~O^$XO&y%lO&}$XO~O^$XO&y%nO&}$XO~O&z!VO&{!UO&|%rO~OPZXYZXiZXrZXsZXuZX}ZX}cX!]ZX!^ZX!`ZX!fZX!uZX!ucX#PcX#SZX#TZX#UZX#VZX#WZX#XZX#YZX#ZZX#]ZX#_ZX#aZX#bZX#gZX']ZX'iZX'pZX'qZX~OzZXzcX~P;OO|%tOz&_X}&_X~P)uO}!ZOz'dX~OP#ZOY#aOi#OOr!xOs!xOu!yO}!ZO!]#QO!^!vO!`!wO!f#ZO#S!|O#T!}O#U!}O#V!}O#W#PO#X#QO#Y#QO#Z#QO#]#RO#_#TO#a#VO#b#WO']QO'i#XO'p!zO'q!{O~Oz'dX~P=uOz%yO~Ou%|O!S&WO!T&PO!U&PO'T$_O~O]%}Oj%}O|&QO'`%zO!O'eP!O'oP~P?xOz'lX}'lX!X'lX!_'lX'i'lX~O!u'lX#P!xX!O'lX~P@qO!u&XOz'nX}'nX~O}&YOz'mX~Oz&[O~O!u#bO~P@qOR&`O!P&]O!k&_O'S$]O~Ob&eO!`$UO'S$]O~Or$kO!`$jO~O!O&fO~P`Or!xOs!xOu!yO!^!vO!`!wO']QOP!baY!bai!ba}!ba!]!ba!f!ba#S!ba#T!ba#U!ba#V!ba#W!ba#X!ba#Y!ba#Z!ba#]!ba#_!ba#a!ba#b!ba'i!ba'p!ba'q!ba~O^!ba&}!baz!ba!_!ba'_!ba!P!ba$x!ba!X!ba~PBzO!_&gO~O!X!tO!u&iO'i&hO}'kX^'kX&}'kX~O!_'kX~PEdO}&mO!_'jX~O!_&oO~Ou$qO!P$rO#O&pO'S$]O~OPTOQTO]bOa!hOb!gOgbOiTOjbOkbOnTOpTOuROwbOxbOybO!PSO!ZjO!`UO!cTO!dTO!eTO!fTO!gTO!j!fO#l!iO#p]O'S8lO']QO'u`O~O]#nOg#{Oi#oOj#nOk#nOn#|Op9OOu#uO!P#vO!Z:QO!`#sO#O9UO#l$QO$V9QO$X9SO$[$RO'S&tO']#pO~O#P&vO~O]#nOg#{Oi#oOj#nOk#nOn#|Op#}Ou#uO!P#vO!Z$SO!`#sO#O$TO#l$QO$V$OO$X$PO$[$RO'S&tO']#pO~O'W'gP~PIxO|&zO!_'hP~P)uO'`&|O~OP8iOQ8iO]bOa:OOb!gOgbOi8iOjbOkbOn8iOp8iOuROwbOxbOybO!P!`O!Z8kO!`UO!c8iO!d8iO!e8iO!f8iO!g8iO!j!fO#l!iO#p]O'S'[O']QO'u9|O~O!`!wO~O}#_O^$Ta&}$Ta!_$Taz$Ta!P$Ta$x$Ta!X$Ta~O#['cO~PHiO!X'eO!P'rX#o'rX#r'rX#y'rX~Or'fO~PN_Or'fO!P'rX#o'rX#r'rX#y'rX~O!P'hO#o'lO#r'gO#y'mO~O|'pO~PKjO#r#cO#y'sO~Or$]Xu$]X!^$]X'i$]X'p$]X'q$]X~OReX}eX!ueX'WeX'W$]X~P! wOj'uO~O&z'wO&{'vO&|'yO~Or'{Ou'|O'i#XO'p(OO'q(QO~O'W'zO~P!#QO'W(TO~O]#nOg#{Oi#oOj#nOk#nOn#|Op9OOu#uO!P#vO!Z:QO!`#sO#O9UO#l$QO$V9QO$X9SO$[$RO']#pO~O|(XO'S(UO!_'vP~P!#oO#P(ZO~O|(_O'S([Oz'wP~P!#oO^(hOi(mOu(eO!S(kO!T(dO!U(dO!`(bO!r(lO$o(gO'T$_O'`(aO~O!O(jO~P!%gO!^!vOr'[Xu'[X'i'[X'p'[X'q'[X}'[X!u'[X~O'W'[X#e'[X~P!&cOR(pO!u(oO}'ZX'W'ZX~O}(qO'W'YX~O'S(sO~O!`(xO~O'S&tO~O!`(bO~Ou$qO|!oO!P$rO!}!rO#O!oO'S$]O!_'jP~O!X!tO#P(|O~OP#ZOY#aOi#OOr!xOs!xOu!yO!]#QO!^!vO!`!wO!f#ZO#S!|O#T!}O#U!}O#V!}O#W#PO#X#QO#Y#QO#Z#QO#]#RO#_#TO#a#VO#b#WO']QO'i#XO'p!zO'q!{O~O^!Ya}!Ya&}!Yaz!Ya!_!Ya'_!Ya!P!Ya$x!Ya!X!Ya~P!(tOR)UO!P&]O!k)TO$x)SO'X$`O~O'S$wO'W'YP~O!X)XO!P'VX^'VX&}'VX~O!`$UO'X$`O~O!`$UO'S$]O'X$`O~O!X!tO#P&vO~O'S)aO!O(OP~O})eO['}X~OY)iO~O[)jO~O!P$hO'S$]O'T$_O['}P~Ou$qO|)oO!P$rO'S$]Oz'mP~O]&TOj&TO|)pO'`&|O!O'oP~O})qO^'zX&}'zX~O!u)uO'X$`O~OR)xO!P#vO'X$`O~O!P)zO~Or)|O!PSO~O!j*RO~Ob*WO~O'S(sO!O'|P~Ob$fO~O$yrO'S$wO~P8cOY*^O[*]O~OPTOQTO]bOamOblOgbOiTOjbOkbOnTOpTOuROwbOxbOybO!ZjO!`UO!cTO!dTO!eTO!fTO!gTO!jkO#p]O$woO']QO'u`O~O!P!`O#l!iO'S8lO~P!0RO[*]O^$XO&}$XO~O^*bO#[*dO${*dO$|*dO~P)uO!`%[O~O%l*iO~O!P*kO~O%|*nO%}*mOP%zaQ%zaW%za]%za^%zaa%zab%zag%zai%zaj%zak%zan%zap%zau%zaw%zax%zay%za!P%za!Z%za!`%za!c%za!d%za!e%za!f%za!g%za!j%za#[%za#l%za#p%za$w%za$y%za${%za$|%za%P%za%R%za%U%za%V%za%X%za%f%za%l%za%n%za%p%za%r%za%u%za%{%za&P%za&R%za&T%za&V%za&X%za&x%za'S%za']%za'u%za!O%za%s%za_%za%x%za~O'S*qO~O'_*tO~Oz&_a}&_a~P!(tO}!ZOz'da~Oz'da~P=uO}&YOz'ma~O}tX}!VX!OtX!O!VX!XtX!X!VX!`!VX!utX'X!VX~O!X*{O!u*zO}!|X}'fX!O!|X!O'fX!X'fX!`'fX'X'fX~O!X*}O!`$UO'X$`O}!RX!O!RX~O]%{Oj%{Ou%|O'`(aO~OP8iOQ8iO]bOa:OOb!gOgbOi8iOjbOkbOn8iOp8iOuROwbOxbOybO!P!`O!Z8kO!`UO!c8iO!d8iO!e8iO!f8iO!g8iO!j!fO#l!iO#p]O']QO'u9|O~O'S9YO~P!9yO}+RO!O'eX~O!O+TO~O!X*{O!u*zO}!|X!O!|X~O}+UO!O'oX~O!O+WO~O]%{Oj%{Ou%|O'T$_O'`(aO~O!T+XO!U+XO~P!<tOu$qO|+[O!P$rO'S$]Oz&dX}&dX~O^+`O!S+cO!T+_O!U+_O!n+eO!o+dO!p+dO!r+fO'T$_O'`(aO~O!O+bO~P!=uOR+kO!P&]O!k+jO~O!u+qO}'ka!_'ka^'ka&}'ka~O!X!tO~P!>yO}&mO!_'ja~Ou$qO|+tO!P$rO!}+vO#O+tO'S$]O}&fX!_&fX~O^!wi}!wi&}!wiz!wi!_!wi'_!wi!P!wi$x!wi!X!wi~P!(tO#P!ta}!ta!_!ta!u!ta!P!ta^!ta&}!taz!ta~P!#QO#P'[XP'[XY'[X^'[Xi'[Xs'[X!]'[X!`'[X!f'[X#S'[X#T'[X#U'[X#V'[X#W'[X#X'[X#Y'[X#Z'[X#]'[X#_'[X#a'[X#b'[X&}'[X']'[X!_'[Xz'[X!P'[X'_'[X$x'[X!X'[X~P!&cO},PO'W'gX~P!#QO'W,RO~O},SO!_'hX~P!(tO!_,VO~Oz,WO~OP#ZOr!xOs!xOu!yO!^!vO!`!wO!f#ZO']QOY#Ri^#Rii#Ri}#Ri!]#Ri#T#Ri#U#Ri#V#Ri#W#Ri#X#Ri#Y#Ri#Z#Ri#]#Ri#_#Ri#a#Ri#b#Ri&}#Ri'i#Ri'p#Ri'q#Riz#Ri!_#Ri'_#Ri!P#Ri$x#Ri!X#Ri~O#S#Ri~P!DWO#S!|O~P!DWOP#ZOr!xOs!xOu!yO!^!vO!`!wO!f#ZO#S!|O#T!}O#U!}O#V!}O']QOY#Ri^#Ri}#Ri!]#Ri#W#Ri#X#Ri#Y#Ri#Z#Ri#]#Ri#_#Ri#a#Ri#b#Ri&}#Ri'i#Ri'p#Ri'q#Riz#Ri!_#Ri'_#Ri!P#Ri$x#Ri!X#Ri~Oi#Ri~P!FrOi#OO~P!FrOP#ZOi#OOr!xOs!xOu!yO!^!vO!`!wO!f#ZO#S!|O#T!}O#U!}O#V!}O#W#PO']QO^#Ri}#Ri#]#Ri#_#Ri#a#Ri#b#Ri&}#Ri'i#Ri'p#Ri'q#Riz#Ri!_#Ri'_#Ri!P#Ri$x#Ri!X#Ri~OY#Ri!]#Ri#X#Ri#Y#Ri#Z#Ri~P!I^OY#aO!]#QO#X#QO#Y#QO#Z#QO~P!I^OP#ZOY#aOi#OOr!xOs!xOu!yO!]#QO!^!vO!`!wO!f#ZO#S!|O#T!}O#U!}O#V!}O#W#PO#X#QO#Y#QO#Z#QO#]#RO']QO^#Ri}#Ri#_#Ri#a#Ri#b#Ri&}#Ri'i#Ri'q#Riz#Ri!_#Ri'_#Ri!P#Ri$x#Ri!X#Ri~O'p#Ri~P!LUO'p!zO~P!LUOP#ZOY#aOi#OOr!xOs!xOu!yO!]#QO!^!vO!`!wO!f#ZO#S!|O#T!}O#U!}O#V!}O#W#PO#X#QO#Y#QO#Z#QO#]#RO#_#TO']QO'p!zO^#Ri}#Ri#a#Ri#b#Ri&}#Ri'i#Riz#Ri!_#Ri'_#Ri!P#Ri$x#Ri!X#Ri~O'q#Ri~P!NpO'q!{O~P!NpOP#ZOY#aOi#OOr!xOs!xOu!yO!]#QO!^!vO!`!wO!f#ZO#S!|O#T!}O#U!}O#V!}O#W#PO#X#QO#Y#QO#Z#QO#]#RO#_#TO#a#VO']QO'p!zO'q!{O~O^#Ri}#Ri#b#Ri&}#Ri'i#Riz#Ri!_#Ri'_#Ri!P#Ri$x#Ri!X#Ri~P##[OPZXYZXiZXrZXsZXuZX!]ZX!^ZX!`ZX!fZX!uZX#PcX#SZX#TZX#UZX#VZX#WZX#XZX#YZX#ZZX#]ZX#_ZX#aZX#bZX#gZX']ZX'iZX'pZX'qZX}ZX!OZX~O#eZX~P#%oOP#ZOY8|Oi8qOr!xOs!xOu!yO!]8sO!^!vO!`!wO!f#ZO#S8oO#T8pO#U8pO#V8pO#W8rO#X8sO#Y8sO#Z8sO#]8tO#_8vO#a8xO#b8yO']QO'i#XO'p!zO'q!{O~O#e,YO~P#'yOP'bXY'bXi'bXr'bXs'bXu'bX!]'bX!^'bX!`'bX!f'bX#S'bX#T'bX#U'bX#V'bX#W'bX#X'bX#Z'bX#]'bX#_'bX#a'bX#b'bX']'bX'i'bX'p'bX'q'bX}'bX~O!u8}O#g8}O#Y'bX#e'bX!O'bX~P#)tO^&ia}&ia&}&ia!_&ia'_&iaz&ia!P&ia$x&ia!X&ia~P!(tOP#RiY#Ri^#Rii#Ris#Ri}#Ri!]#Ri!^#Ri!`#Ri!f#Ri#S#Ri#T#Ri#U#Ri#V#Ri#W#Ri#X#Ri#Y#Ri#Z#Ri#]#Ri#_#Ri#a#Ri#b#Ri&}#Ri']#Riz#Ri!_#Ri'_#Ri!P#Ri$x#Ri!X#Ri~P!#QO^#fi}#fi&}#fiz#fi!_#fi'_#fi!P#fi$x#fi!X#fi~P!(tO#r,[O~O#r,]O~O!X'eO!u,^O!P#vX#o#vX#r#vX#y#vX~O|,_O~O!P'hO#o,aO#r'gO#y,bO~O}8zO!O'aX~P#'yO!O,cO~O#y,eO~O&z'wO&{'vO&|,hO~O],kOj,kOz,lO~O}cX!XcX!_cX!_$]X'icX~P! wO!_,rO~P!#QO},sO!X!tO'i&hO!_'vX~O!_,xO~Oz$]X}$]X!X$dX~P! wO},zOz'wX~P!#QO!X,|O~Oz-OO~O|(XO'S$]O!_'vP~Oi-SO!X!tO!`$UO'X$`O'i&hO~O!X)XO~O!O-YO~P!%gO!T-ZO!U-ZO'T$_O'`(aO~Ou-]O'`(aO~O!r-^O~O'S$wO}&nX'W&nX~O}(qO'W'Ya~Or-cOs-cOu-dO'ioa'poa'qoa}oa!uoa~O'Woa#eoa~P#4xOr'{Ou'|O'i$Ua'p$Ua'q$Ua}$Ua!u$Ua~O'W$Ua#e$Ua~P#5nOr'{Ou'|O'i$Wa'p$Wa'q$Wa}$Wa!u$Wa~O'W$Wa#e$Wa~P#6aO]-eO~O#P-fO~O'W$fa}$fa#e$fa!u$fa~P!#QO#P-iO~OR-rO!P&]O!k-qO$x-pO~O'W-sO~O]#nOi#oOj#nOk#nOn#|Op9OOu#uO!P#vO!Z:QO!`#sO#O9UO#l$QO$V9QO$X9SO$[$RO']#pO~Og-uO'S-tO~P#8WO!X)XO!P'Va^'Va&}'Va~O#P-{O~OYZX}cX!OcX~O}-|O!O(OX~O!O.OO~OY.PO~O!P$hO'S$]O[&vX}&vX~O})eO['}a~O!_.SO~P!(tO].UO~OY.VO~O[.WO~OR-rO!P&]O!k-qO$x-pO'X$`O~O})qO^'za&}'za~O!u.^O~OR.aO!P#vO~O'`&|O!O'{P~OR.kO!P.gO!k.jO$x.iO'X$`O~OY.uO}.sO!O'|X~O!O.vO~O[.xO^$XO&}$XO~O].yO~O#Y.{O%j.|O~P0nO!u#bO#Y.{O%j.|O~O^.}O~P)uO^/PO~O%s/TOP%qiQ%qiW%qi]%qi^%qia%qib%qig%qii%qij%qik%qin%qip%qiu%qiw%qix%qiy%qi!P%qi!Z%qi!`%qi!c%qi!d%qi!e%qi!f%qi!g%qi!j%qi#[%qi#l%qi#p%qi$w%qi$y%qi${%qi$|%qi%P%qi%R%qi%U%qi%V%qi%X%qi%f%qi%l%qi%n%qi%p%qi%r%qi%u%qi%{%qi&P%qi&R%qi&T%qi&V%qi&X%qi&x%qi'S%qi']%qi'u%qi!O%qi_%qi%x%qi~O_/ZO!O/XO%x/YO~P`O!PSO!`/^O~O}#_O'_$Ta~Oz&_i}&_i~P!(tO}!ZOz'di~O}&YOz'mi~Oz/bO~O}!Ra!O!Ra~P#'yO]%{Oj%{O|/hO'`(aO}&`X!O&`X~P?xO}+RO!O'ea~O]&TOj&TO|)pO'`&|O}&eX!O&eX~O}+UO!O'oa~Oz'ni}'ni~P!(tO^$XO!X!tO!`$UO!f/sO!u/qO&}$XO'X$`O'i&hO~O!O/vO~P!=uO!T/wO!U/wO'T$_O'`(aO~O!S/yO!T/wO!U/wO!r/zO'T$_O'`(aO~O!o/{O!p/{O~P#FWO!P&]O~O!P&]O~P!#QO}'ki!_'ki^'ki&}'ki~P!(tO!u0UO}'ki!_'ki^'ki&}'ki~O}&mO!_'ji~Ou$qO!P$rO#O0WO'S$]O~O#PoaPoaYoa^oaioa!]oa!^oa!`oa!foa#Soa#Toa#Uoa#Voa#Woa#Xoa#Yoa#Zoa#]oa#_oa#aoa#boa&}oa']oa!_oazoa!Poa'_oa$xoa!Xoa~P#4xO#P$UaP$UaY$Ua^$Uai$Uas$Ua!]$Ua!^$Ua!`$Ua!f$Ua#S$Ua#T$Ua#U$Ua#V$Ua#W$Ua#X$Ua#Y$Ua#Z$Ua#]$Ua#_$Ua#a$Ua#b$Ua&}$Ua']$Ua!_$Uaz$Ua!P$Ua'_$Ua$x$Ua!X$Ua~P#5nO#P$WaP$WaY$Wa^$Wai$Was$Wa!]$Wa!^$Wa!`$Wa!f$Wa#S$Wa#T$Wa#U$Wa#V$Wa#W$Wa#X$Wa#Y$Wa#Z$Wa#]$Wa#_$Wa#a$Wa#b$Wa&}$Wa']$Wa!_$Waz$Wa!P$Wa'_$Wa$x$Wa!X$Wa~P#6aO#P$faP$faY$fa^$fai$fas$fa}$fa!]$fa!^$fa!`$fa!f$fa#S$fa#T$fa#U$fa#V$fa#W$fa#X$fa#Y$fa#Z$fa#]$fa#_$fa#a$fa#b$fa&}$fa']$fa!_$faz$fa!P$fa!u$fa'_$fa$x$fa!X$fa~P!#QO^!wq}!wq&}!wqz!wq!_!wq'_!wq!P!wq$x!wq!X!wq~P!(tO}&aX'W&aX~PIxO},PO'W'ga~O|0`O}&bX!_&bX~P)uO},SO!_'ha~O},SO!_'ha~P!(tO#e!ba!O!ba~PBzO#e!Ya}!Ya!O!Ya~P#'yO!P0sO#p]O#w0tO~O!O0xO~O'_0yO~P!#QO^$Qq}$Qq&}$Qqz$Qq!_$Qq'_$Qq!P$Qq$x$Qq!X$Qq~P!(tOz0zO~O],kOj,kO~Or'{Ou'|O'q(QO'i$pi'p$pi}$pi!u$pi~O'W$pi#e$pi~P$&YOr'{Ou'|O'i$ri'p$ri'q$ri}$ri!u$ri~O'W$ri#e$ri~P$&{O#e0{O~P!#QO|0}O'S$]O}&jX!_&jX~O},sO!_'va~O},sO!X!tO!_'va~O},sO!X!tO'i&hO!_'va~O'W$_i}$_i#e$_i!u$_i~P!#QO|1UO'S([Oz&lX}&lX~P!#oO},zOz'wa~O},zOz'wa~P!#QO!X!tO~O!X!tO#Y1`O~Oi1dO!X!tO'i&hO~O}'Zi'W'Zi~P!#QO!u1gO}'Zi'W'Zi~P!#QO!_1jO~O^$Rq}$Rq&}$Rqz$Rq!_$Rq'_$Rq!P$Rq$x$Rq!X$Rq~P!(tO}1nO!P'xX~P!#QO!P&]O$x1qO~O!P&]O$x1qO~P!#QO!P$]X$mZX^$]X&}$]X~P! wO$m1uOrfXufX!PfX'ifX'pfX'qfX^fX&}fX~O$m1uO~O'S)aO}&uX!O&uX~O}-|O!O(Oa~O[2OO~O]2RO~OR2TO!P&]O!k2SO$x1qO~O^$XO&}$XO~P!#QO!P#vO~P!#QO}2YO!u2[O!O'{X~O!O2]O~Ou(eO!S2fO!T2_O!U2_O!n2eO!o2dO!p2dO!r2cO'T$_O'`(aO~O!O2bO~P$/ROR2mO!P.gO!k2lO$x2kO~OR2mO!P.gO!k2lO$x2kO'X$`O~O'S(sO}&tX!O&tX~O}.sO!O'|a~O'`2vO~O]2xO~O[2zO~O!_2}O~P)uO^3PO~O^3PO~P)uO#Y3RO%j3SO~PEdO_/ZO!O3WO%x/YO~P`O!X3YO~O%}3ZOP%zqQ%zqW%zq]%zq^%zqa%zqb%zqg%zqi%zqj%zqk%zqn%zqp%zqu%zqw%zqx%zqy%zq!P%zq!Z%zq!`%zq!c%zq!d%zq!e%zq!f%zq!g%zq!j%zq#[%zq#l%zq#p%zq$w%zq$y%zq${%zq$|%zq%P%zq%R%zq%U%zq%V%zq%X%zq%f%zq%l%zq%n%zq%p%zq%r%zq%u%zq%{%zq&P%zq&R%zq&T%zq&V%zq&X%zq&x%zq'S%zq']%zq'u%zq!O%zq%s%zq_%zq%x%zq~O}!|i!O!|i~P#'yO!u3]O}!|i!O!|i~O}!Ri!O!Ri~P#'yO^$XO!u3dO&}$XO~O^$XO!X!tO!u3dO&}$XO~O^$XO!X!tO!`$UO!f3hO!u3dO&}$XO'X$`O'i&hO~O!T3iO!U3iO'T$_O'`(aO~O!S3lO!T3iO!U3iO!r3mO'T$_O'`(aO~O^$XO!X!tO!f3hO!u3dO&}$XO'i&hO~O}'kq!_'kq^'kq&}'kq~P!(tO}&mO!_'jq~O#P$piP$piY$pi^$pii$pis$pi!]$pi!^$pi!`$pi!f$pi#S$pi#T$pi#U$pi#V$pi#W$pi#X$pi#Y$pi#Z$pi#]$pi#_$pi#a$pi#b$pi&}$pi']$pi!_$piz$pi!P$pi'_$pi$x$pi!X$pi~P$&YO#P$riP$riY$ri^$rii$ris$ri!]$ri!^$ri!`$ri!f$ri#S$ri#T$ri#U$ri#V$ri#W$ri#X$ri#Y$ri#Z$ri#]$ri#_$ri#a$ri#b$ri&}$ri']$ri!_$riz$ri!P$ri'_$ri$x$ri!X$ri~P$&{O#P$_iP$_iY$_i^$_ii$_is$_i}$_i!]$_i!^$_i!`$_i!f$_i#S$_i#T$_i#U$_i#V$_i#W$_i#X$_i#Y$_i#Z$_i#]$_i#_$_i#a$_i#b$_i&}$_i']$_i!_$_iz$_i!P$_i!u$_i'_$_i$x$_i!X$_i~P!#QO}&aa'W&aa~P!#QO}&ba!_&ba~P!(tO},SO!_'hi~O#e!wi}!wi!O!wi~P#'yOP#ZOr!xOs!xOu!yO!^!vO!`!wO!f#ZO']QOY#Rii#Ri!]#Ri#T#Ri#U#Ri#V#Ri#W#Ri#X#Ri#Y#Ri#Z#Ri#]#Ri#_#Ri#a#Ri#b#Ri#e#Ri'i#Ri'p#Ri'q#Ri}#Ri!O#Ri~O#S#Ri~P$@xO#S8oO~P$@xOP#ZOr!xOs!xOu!yO!^!vO!`!wO!f#ZO#S8oO#T8pO#U8pO#V8pO']QOY#Ri!]#Ri#W#Ri#X#Ri#Y#Ri#Z#Ri#]#Ri#_#Ri#a#Ri#b#Ri#e#Ri'i#Ri'p#Ri'q#Ri}#Ri!O#Ri~Oi#Ri~P$CQOi8qO~P$CQOP#ZOi8qOr!xOs!xOu!yO!^!vO!`!wO!f#ZO#S8oO#T8pO#U8pO#V8pO#W8rO']QO#]#Ri#_#Ri#a#Ri#b#Ri#e#Ri'i#Ri'p#Ri'q#Ri}#Ri!O#Ri~OY#Ri!]#Ri#X#Ri#Y#Ri#Z#Ri~P$EYOY8|O!]8sO#X8sO#Y8sO#Z8sO~P$EYOP#ZOY8|Oi8qOr!xOs!xOu!yO!]8sO!^!vO!`!wO!f#ZO#S8oO#T8pO#U8pO#V8pO#W8rO#X8sO#Y8sO#Z8sO#]8tO']QO#_#Ri#a#Ri#b#Ri#e#Ri'i#Ri'q#Ri}#Ri!O#Ri~O'p#Ri~P$GnO'p!zO~P$GnOP#ZOY8|Oi8qOr!xOs!xOu!yO!]8sO!^!vO!`!wO!f#ZO#S8oO#T8pO#U8pO#V8pO#W8rO#X8sO#Y8sO#Z8sO#]8tO#_8vO']QO'p!zO#a#Ri#b#Ri#e#Ri'i#Ri}#Ri!O#Ri~O'q#Ri~P$IvO'q!{O~P$IvOP#ZOY8|Oi8qOr!xOs!xOu!yO!]8sO!^!vO!`!wO!f#ZO#S8oO#T8pO#U8pO#V8pO#W8rO#X8sO#Y8sO#Z8sO#]8tO#_8vO#a8xO']QO'p!zO'q!{O~O#b#Ri#e#Ri'i#Ri}#Ri!O#Ri~P$LOO^#cy}#cy&}#cyz#cy!_#cy'_#cy!P#cy$x#cy!X#cy~P!(tOP#RiY#Rii#Ris#Ri!]#Ri!^#Ri!`#Ri!f#Ri#S#Ri#T#Ri#U#Ri#V#Ri#W#Ri#X#Ri#Y#Ri#Z#Ri#]#Ri#_#Ri#a#Ri#b#Ri#e#Ri']#Ri}#Ri!O#Ri~P!#QO!^!vOP'[XY'[Xi'[Xr'[Xs'[Xu'[X!]'[X!`'[X!f'[X#S'[X#T'[X#U'[X#V'[X#W'[X#X'[X#Y'[X#Z'[X#]'[X#_'[X#a'[X#b'[X#e'[X']'[X'i'[X'p'[X'q'[X}'[X!O'[X~O#e#fi}#fi!O#fi~P#'yO!O3}O~O}&ia!O&ia~P#'yO!X!tO'i&hO}&ja!_&ja~O},sO!_'vi~O},sO!X!tO!_'vi~Oz&la}&la~P!#QO!X4UO~O},zOz'wi~P!#QO},zOz'wi~Oz4[O~O!X!tO#Y4bO~Oi4cO!X!tO'i&hO~Oz4eO~O'W$aq}$aq#e$aq!u$aq~P!#QO^$Ry}$Ry&}$Ryz$Ry!_$Ry'_$Ry!P$Ry$x$Ry!X$Ry~P!(tO}1nO!P'xa~O!P&]O$x4jO~O!P&]O$x4jO~P!#QO^!wy}!wy&}!wyz!wy!_!wy'_!wy!P!wy$x!wy!X!wy~P!(tOY4mO~O}-|O!O(Oi~O]4oO~O[4pO~O'`&|O}&qX!O&qX~O}2YO!O'{a~O!O4}O~P$/RO!S5QO!T5PO!U5PO!r/zO'T$_O'`(aO~O!o5RO!p5RO~P%*]O!T5PO!U5PO'T$_O'`(aO~O!P.gO~O!P.gO$x5TO~O!P.gO$x5TO~P!#QOR5YO!P.gO!k5XO$x5TO~OY5_O}&ta!O&ta~O}.sO!O'|i~O]5bO~O!_5cO~O!_5dO~O!_5eO~O!_5eO~P)uO^5gO~O!X5jO~O!_5lO~O}'ni!O'ni~P#'yO^$XO&}$XO~P!(tO^$XO!u5qO&}$XO~O^$XO!X!tO!u5qO&}$XO~O^$XO!X!tO!f5vO!u5qO&}$XO'i&hO~O!`$UO'X$`O~P%.`O!T5wO!U5wO'T$_O'`(aO~O}'ky!_'ky^'ky&}'ky~P!(tO#P$aqP$aqY$aq^$aqi$aqs$aq}$aq!]$aq!^$aq!`$aq!f$aq#S$aq#T$aq#U$aq#V$aq#W$aq#X$aq#Y$aq#Z$aq#]$aq#_$aq#a$aq#b$aq&}$aq']$aq!_$aqz$aq!P$aq!u$aq'_$aq$x$aq!X$aq~P!#QO}&bi!_&bi~P!(tO#e!wq}!wq!O!wq~P#'yOr-cOs-cOu-dOPoaYoaioa!]oa!^oa!`oa!foa#Soa#Toa#Uoa#Voa#Woa#Xoa#Yoa#Zoa#]oa#_oa#aoa#boa#eoa']oa'ioa'poa'qoa}oa!Ooa~Or'{Ou'|OP$UaY$Uai$Uas$Ua!]$Ua!^$Ua!`$Ua!f$Ua#S$Ua#T$Ua#U$Ua#V$Ua#W$Ua#X$Ua#Y$Ua#Z$Ua#]$Ua#_$Ua#a$Ua#b$Ua#e$Ua']$Ua'i$Ua'p$Ua'q$Ua}$Ua!O$Ua~Or'{Ou'|OP$WaY$Wai$Was$Wa!]$Wa!^$Wa!`$Wa!f$Wa#S$Wa#T$Wa#U$Wa#V$Wa#W$Wa#X$Wa#Y$Wa#Z$Wa#]$Wa#_$Wa#a$Wa#b$Wa#e$Wa']$Wa'i$Wa'p$Wa'q$Wa}$Wa!O$Wa~OP$faY$fai$fas$fa!]$fa!^$fa!`$fa!f$fa#S$fa#T$fa#U$fa#V$fa#W$fa#X$fa#Y$fa#Z$fa#]$fa#_$fa#a$fa#b$fa#e$fa']$fa}$fa!O$fa~P!#QO#e$Qq}$Qq!O$Qq~P#'yO#e$Rq}$Rq!O$Rq~P#'yO!O6RO~O'W$ty}$ty#e$ty!u$ty~P!#QO!X!tO}&ji!_&ji~O!X!tO'i&hO}&ji!_&ji~O},sO!_'vq~Oz&li}&li~P!#QO},zOz'wq~Oz6YO~P!#QOz6YO~O}'Zy'W'Zy~P!#QO}&oa!P&oa~P!#QO!P$lq^$lq&}$lq~P!#QO}-|O!O(Oq~O]6cO~O!P&]O$x6dO~O!P&]O$x6dO~P!#QO!u6eO}&qa!O&qa~O}2YO!O'{i~P#'yO!T6kO!U6kO'T$_O'`(aO~O!S6mO!T6kO!U6kO!r3mO'T$_O'`(aO~O!P.gO$x6pO~O!P.gO$x6pO~P!#QO'`6vO~O}.sO!O'|q~O!_6yO~O!_6yO~P)uO!_6{O~O!_6|O~O}!|y!O!|y~P#'yO^$XO!u7RO&}$XO~O^$XO!X!tO!u7RO&}$XO~O^$XO!X!tO!f7VO!u7RO&}$XO'i&hO~O#P$tyP$tyY$ty^$tyi$tys$ty}$ty!]$ty!^$ty!`$ty!f$ty#S$ty#T$ty#U$ty#V$ty#W$ty#X$ty#Y$ty#Z$ty#]$ty#_$ty#a$ty#b$ty&}$ty']$ty!_$tyz$ty!P$ty!u$ty'_$ty$x$ty!X$ty~P!#QO#e#cy}#cy!O#cy~P#'yOP$_iY$_ii$_is$_i!]$_i!^$_i!`$_i!f$_i#S$_i#T$_i#U$_i#V$_i#W$_i#X$_i#Y$_i#Z$_i#]$_i#_$_i#a$_i#b$_i#e$_i']$_i}$_i!O$_i~P!#QOr'{Ou'|O'q(QOP$piY$pii$pis$pi!]$pi!^$pi!`$pi!f$pi#S$pi#T$pi#U$pi#V$pi#W$pi#X$pi#Y$pi#Z$pi#]$pi#_$pi#a$pi#b$pi#e$pi']$pi'i$pi'p$pi}$pi!O$pi~Or'{Ou'|OP$riY$rii$ris$ri!]$ri!^$ri!`$ri!f$ri#S$ri#T$ri#U$ri#V$ri#W$ri#X$ri#Y$ri#Z$ri#]$ri#_$ri#a$ri#b$ri#e$ri']$ri'i$ri'p$ri'q$ri}$ri!O$ri~O#e$Ry}$Ry!O$Ry~P#'yO#e!wy}!wy!O!wy~P#'yO!X!tO}&jq!_&jq~O},sO!_'vy~Oz&lq}&lq~P!#QOz7]O~P!#QO}2YO!O'{q~O!T7hO!U7hO'T$_O'`(aO~O!P.gO$x7kO~O!P.gO$x7kO~P!#QO!_7nO~O%}7oOP%z!ZQ%z!ZW%z!Z]%z!Z^%z!Za%z!Zb%z!Zg%z!Zi%z!Zj%z!Zk%z!Zn%z!Zp%z!Zu%z!Zw%z!Zx%z!Zy%z!Z!P%z!Z!Z%z!Z!`%z!Z!c%z!Z!d%z!Z!e%z!Z!f%z!Z!g%z!Z!j%z!Z#[%z!Z#l%z!Z#p%z!Z$w%z!Z$y%z!Z${%z!Z$|%z!Z%P%z!Z%R%z!Z%U%z!Z%V%z!Z%X%z!Z%f%z!Z%l%z!Z%n%z!Z%p%z!Z%r%z!Z%u%z!Z%{%z!Z&P%z!Z&R%z!Z&T%z!Z&V%z!Z&X%z!Z&x%z!Z'S%z!Z']%z!Z'u%z!Z!O%z!Z%s%z!Z_%z!Z%x%z!Z~O^$XO!u7sO&}$XO~O^$XO!X!tO!u7sO&}$XO~OP$aqY$aqi$aqs$aq!]$aq!^$aq!`$aq!f$aq#S$aq#T$aq#U$aq#V$aq#W$aq#X$aq#Y$aq#Z$aq#]$aq#_$aq#a$aq#b$aq#e$aq']$aq}$aq!O$aq~P!#QO}&qq!O&qq~P#'yO^$XO!u8XO&}$XO~OP$tyY$tyi$tys$ty!]$ty!^$ty!`$ty!f$ty#S$ty#T$ty#U$ty#V$ty#W$ty#X$ty#Y$ty#Z$ty#]$ty#_$ty#a$ty#b$ty#e$ty']$ty}$ty!O$ty~P!#QO'_'aX~P.^O'_ZXzZX!_ZX%jZX!PZX$xZX!XZX~P$wO!XcX!_ZX!_cX'icX~P;OOP8iOQ8iO]bOa:OOb!gOgbOi8iOjbOkbOn8iOp8iOuROwbOxbOybO!PSO!Z8kO!`UO!c8iO!d8iO!e8iO!f8iO!g8iO!j!fO#l!iO#p]O'S'[O']QO'u9|O~O}8zO!O$Ta~O]#nOg#{Oi#oOj#nOk#nOn#|Op9POu#uO!P#vO!Z:RO!`#sO#O9VO#l$QO$V9RO$X9TO$[$RO'S&tO']#pO~O#['cO~P&(sO!OZX!OcX~P;OO#P8nO~O!X!tO#P8nO~O!u8}O~O!u9WO}'nX!O'nX~O!u8}O}'lX!O'lX~O#P9XO~O'W9ZO~P!#QO#P9`O~O#P9aO~O!X!tO#P9bO~O!X!tO#P9XO~O#e9cO~P#'yO#P9dO~O#P9eO~O#P9fO~O#P9gO~O#e9hO~P!#QO#e9iO~P!#QO#p~!^!n!p!}#O'u$V$X$[$m$w$x$y%P%R%U%V%X%Z~TS#p'u#Ty'P'Q#r'P'S'`~",
-	  goto: "#=a(SPPPPPPP(TP(eP*QPPPP-aPP-v2z4m5QP5QPPP5Q5QP5QP6nPP6sP7[PPPP;kPPPP;k>ZPPP>a@dP;kPBwPPPPDo;kPPPPPFh;kPPIgJdPPPJhPJpKqP;k;kNx!#q!(a!(a!+nPPP!+u;kPPPPPPPPPP!.iP!/zPP;k!1XP;kP;k;k;k;kP;k!3lPP!6cP!9U!9^!9b!9bP!6`P!9f!9fP!<XP!<];k;k!<c!?T5QP5QP5Q5QP!@W5Q5Q!A{5Q5Q5Q!C}5Q5Q!Dk!Fe!Fe!Fi!Fe!FqP!FeP5Q!Gm5Q!Hw5Q5Q-aPPP!JUPP!Jn!JnP!JnP!KT!JnPP!KZP!KQP!KQ!KmJl!KQ!L[!Lb!Le(T!Lh(TP!Lo!Lo!LoP(TP(TP(TP(TPP(TP!Lu!LxP!Lx(TPPP(TP(TP(TP(TP(TP(T(T!L|!MW!M^!Md!Mr!Mx!NO!NY!N`!Nj!Np# O# U# [# j#!P##c##q##w##}#$T#$Z#$e#$k#$q#${#%V#%]PPPPPPPPP#%cPP#&V#*TPP#+h#+o#+wP#0TPP#0X#2l#8f#8j#8m#8p#8{#9OP#9R#9V#9t#:i#:m#;PPP#;T#;Z#;_P#;b#;f#;i#<X#<o#<t#<w#<z#=Q#=T#=X#=]mgOSi{!k$W%_%b%c%e*f*k/T/WQ$elQ$lnQ%VwS&P!`+RQ&d!gS(d#v(iQ)_$fQ)k$nQ*V%PQ+X&WS+_&]+aQ+o&eQ-Z(kQ.r*WU/w+c+d+eS2_.g2aS3i/y/{U5P2d2e2fQ5w3lS6k5Q5RR7h6m$lZORSTUij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#_#b$W$j%W%Z%_%a%b%c%e%i%t%|&X&_&i&v&z'z(|)T*b*f*k+j+q,S,Y-d-i-q-{.j.{.|.}/P/T/W/Y/q0U0`2S2l3P3R3S3d5X5g5q7R7s8X!j'^#Y#h&Q'p*z*},_/h0s2[3]6e8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PQ(t#}Q)d$hQ*X%SQ*`%[Q+y9OQ-v)XQ.z*^Q1{-|Q2t.sR3v9PpdOSiw{!k$W%U%_%b%c%e*f*k/T/WR*Z%W&WVOSTijm{!Q!U!Z!h!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#Y#_#b#h$W$j%W%Z%[%_%a%b%c%e%i%t%|&X&_&i&v&z'p'z(|)T*b*f*k*z*}+j+q,S,Y,_-d-i-q-{.j.{.|.}/P/T/W/Y/h/q0U0`0s2S2[2l3P3R3S3]3d5X5g5q6e7R7s8X8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:O:PW!aRU!^&QQ$^kQ$dlS$in$nv$spq!o!r$U$q&Y&m&p)o)p)q*d*{+[+t+v/^0WQ${uQ&a!fQ&c!gS(W#s(bS)^$e$fQ)b$hQ)n$pQ*Q$}Q*U%PS+n&d&eQ,w(XQ-z)_Q.Q)eQ.T)iQ.m*RS.q*V*WQ0S+oQ0|,sQ1z-|Q1}.PQ2Q.VQ2s.rQ4R0}R6a4m!W$bl!g$d$e$f&O&c&d&e(c)^)_+O+^+n+o-T-z/m/t/x0S1c3g3k5u7UQ)V$^Q)v$xQ)y$yQ*T%PQ.X)nQ.l*QU.p*U*V*WQ2n.mS2r.q.rQ4z2^Q5^2sS6i4{5OS7f6j6lQ8O7gR8^8PW#y`$`(q9|S$xr%UQ$ysQ$ztR)t$v$V#x`!t!v#a#s#u$O$P$T&`'v(P(R(S(Z(_(o(p)S)U)X)u)x+k,P,z,|-f-p-r.^.a.i.k0{1U1`1g1n1q1u2T2k2m4U4b4j5T5Y6d6p7k8|9Q9R9S9T9U9V9[9]9^9_9`9a9d9e9h9i9|:S:TV(u#}9O9PU&T!`$r+UQ&}!xQ)h$kQ,j'{Q.b)zQ1h-cR4v2Y&YbORSTUij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#Y#_#b#h$W$j%W%Z%[%_%a%b%c%e%i%t%|&Q&X&_&i&v&z'p'z(|)T*b*f*k*z*}+j+q,S,Y,_-d-i-q-{.j.{.|.}/P/T/W/Y/h/q0U0`0s2S2[2l3P3R3S3]3d5X5g5q6e7R7s8X8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:P$]#^Y!]!l$[%s%w&r&y'P'Q'R'S'T'U'V'W'X'Y'Z']'`'d'n)g*v+P+Y+p,O,U,X,Z,i-g/c/f0T0_0c0d0e0f0g0h0i0j0k0l0m0n0o0r0w1l1x3_3b3q3t3u3z3{4x5m5p5{6P6Q7P7b7q8V8a8j9u&ZbORSTUij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#Y#_#b#h$W$j%W%Z%[%_%a%b%c%e%i%t%|&Q&X&_&i&v&z'p'z(|)T*b*f*k*z*}+j+q,S,Y,_-d-i-q-{.j.{.|.}/P/T/W/Y/h/q0U0`0s2S2[2l3P3R3S3]3d5X5g5q6e7R7s8X8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PQ&R!`R/i+RY%{!`&P&W+R+XS(c#v(iS+^&]+aS-T(d(kQ-U(eQ-[(lQ.d)|S/t+_+cS/x+d+eS/|+f2cQ1c-ZQ1e-]Q1f-^S2^.g2aS3g/w/yQ3j/zQ3k/{S4{2_2fS5O2d2eS5u3i3lQ5x3mS6j5P5QQ6l5RQ7U5wS7g6k6mR8P7hlgOSi{!k$W%_%b%c%e*f*k/T/WQ%g!OS&q!s8nQ)[$cQ*O${Q*P$|Q+l&bS+}&v9XS-h(|9bQ-x)]Q.f)}Q/[*mQ/]*nQ/e*|Q0Q+mS1m-i9fQ1v-yS1y-{9gQ3^/gQ3a/oQ3o0RQ4l1wQ5k3ZQ5n3`Q5r3fQ5y3pQ6}5lQ7Q5sQ7r7SQ8T7oR8W7t$W#]Y!]!l%s%w&r&y'P'Q'R'S'T'U'V'W'X'Y'Z']'`'d'n)g*v+P+Y+p,O,U,X,i-g/c/f0T0_0c0d0e0f0g0h0i0j0k0l0m0n0o0r0w1l1x3_3b3q3t3u3z3{4x5m5p5{6P6Q7P7b7q8V8a8j9uU(n#w&u0qT)Q$[,Z$W#[Y!]!l%s%w&r&y'P'Q'R'S'T'U'V'W'X'Y'Z']'`'d'n)g*v+P+Y+p,O,U,X,i-g/c/f0T0_0c0d0e0f0g0h0i0j0k0l0m0n0o0r0w1l1x3_3b3q3t3u3z3{4x5m5p5{6P6Q7P7b7q8V8a8j9uQ'_#]S)P$[,ZR-j)Q&YbORSTUij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#Y#_#b#h$W$j%W%Z%[%_%a%b%c%e%i%t%|&Q&X&_&i&v&z'p'z(|)T*b*f*k*z*}+j+q,S,Y,_-d-i-q-{.j.{.|.}/P/T/W/Y/h/q0U0`0s2S2[2l3P3R3S3]3d5X5g5q6e7R7s8X8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PQ%byQ%czQ%e|Q%f}R/S*iQ&^!fQ)R$^Q+i&aS-o)V)nS/}+g+hW1p-l-m-n.XS3n0O0PU4i1r1s1tU6_4h4r4sQ7_6`R7z7aT+`&]+aS+`&]+aT2`.g2aS&k!n/QQ,v(WQ-R(cS/s+^2^Q1R,wS1]-S-[U3h/x/|5OQ4Q0|S4`1d1fU5v3j3k6lQ6T4RQ6^4cR7V5xQ!uXS&j!n/QQ(}$VQ)Y$aQ)`$gQ+r&kQ,u(WQ-Q(cQ-V(fQ-w)ZQ.n*SS/r+^2^S1Q,v,wS1[-R-[Q1_-UQ1b-WQ2p.oW3e/s/x/|5OQ4P0|Q4T1RS4Y1]1fQ4a1eQ5[2qW5t3h3j3k6lS6S4Q4RQ6X4[Q6[4`Q6g4yQ6t5]S7T5v5xQ7X6TQ7Z6YQ7^6^Q7d6hQ7m6uQ7u7VQ7x7]Q7|7eQ8[7}Q8c8]Q8g8dQ9o9kQ9x9sR9y9t$nWORSTUij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#_#b$W$j%W%Z%[%_%a%b%c%e%i%t%|&X&_&i&v&z'z(|)T*b*f*k+j+q,S,Y-d-i-q-{.j.{.|.}/P/T/W/Y/q0U0`2S2l3P3R3S3d5X5g5q7R7s8XS!um!h!j9j#Y#h&Q'p*z*},_/h0s2[3]6e8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PR9o:O$nXORSTUij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#_#b$W$j%W%Z%[%_%a%b%c%e%i%t%|&X&_&i&v&z'z(|)T*b*f*k+j+q,S,Y-d-i-q-{.j.{.|.}/P/T/W/Y/q0U0`2S2l3P3R3S3d5X5g5q7R7s8XQ$Va!W$al!g$d$e$f&O&c&d&e(c)^)_+O+^+n+o-T-z/m/t/x0S1c3g3k5u7US$gm!hQ)Z$bQ*S%PW.o*T*U*V*WU2q.p.q.rQ4y2^S5]2r2sU6h4z4{5OQ6u5^U7e6i6j6lS7}7f7gS8]8O8PQ8d8^!j9k#Y#h&Q'p*z*},_/h0s2[3]6e8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PQ9s9}R9t:O$f[OSTij{!Q!U!Z!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#_#b$W$j%W%Z%_%a%b%c%e%i%t%|&X&_&i&v&z'z(|)T*b*f*k+j+q,S,Y-d-i-q-{.j.{.|.}/P/T/W/Y/q0U0`2S2l3P3R3S3d5X5g5q7R7s8XU!eRU!^v$spq!o!r$U$q&Y&m&p)o)p)q*d*{+[+t+v/^0WQ*a%[!h9l#Y#h'p*z*},_/h0s2[3]6e8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PR9n&QS&U!`$rR/k+U$lZORSTUij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#_#b$W$j%W%Z%_%a%b%c%e%i%t%|&X&_&i&v&z'z(|)T*b*f*k+j+q,S,Y-d-i-q-{.j.{.|.}/P/T/W/Y/q0U0`2S2l3P3R3S3d5X5g5q7R7s8X!j'^#Y#h&Q'p*z*},_/h0s2[3]6e8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PR*`%[!h#SY!]$[%s%w&r&y'W'X'Y'Z'`'d)g*v+Y+p,O,U,i-g0T0_0o1l1x3b3q3t5p7P7q8V8a8j!R8u']'n+P,Z/c/f0c0k0l0m0n0r0w3_3u3z3{4x5m5{6P6Q7b9u!d#UY!]$[%s%w&r&y'Y'Z'`'d)g*v+Y+p,O,U,i-g0T0_0o1l1x3b3q3t5p7P7q8V8a8j}8w']'n+P,Z/c/f0c0m0n0r0w3_3u3z3{4x5m5{6P6Q7b9u!`#YY!]$[%s%w&r&y'`'d)g*v+Y+p,O,U,i-g0T0_0o1l1x3b3q3t5p7P7q8V8a8jl(S#q&w({,q,y-_-`0]1k4O4d9p9z9{x:P']'n+P,Z/c/f0c0r0w3_3u3z3{4x5m5{6P6Q7b9u!`:S&s'b(V(]+h+|,f,}-k-n.]._0P0[1S1W1t2V2X2i3s4V4]4f4k4s5W5z6V6]6rZ:T0p3y5|7W7v&YbORSTUij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#Y#_#b#h$W$j%W%Z%[%_%a%b%c%e%i%t%|&Q&X&_&i&v&z'p'z(|)T*b*f*k*z*}+j+q,S,Y,_-d-i-q-{.j.{.|.}/P/T/W/Y/h/q0U0`0s2S2[2l3P3R3S3]3d5X5g5q6e7R7s8X8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PS#i_#jR0t,^&a^ORSTU_ij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#Y#_#b#h#j$W$j%W%Z%[%_%a%b%c%e%i%t%|&Q&X&_&i&v&z'p'z(|)T*b*f*k*z*}+j+q,S,Y,^,_-d-i-q-{.j.{.|.}/P/T/W/Y/h/q0U0`0s2S2[2l3P3R3S3]3d5X5g5q6e7R7s8X8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PS#d]#kT'g#f'kT#e]#kT'i#f'k&a_ORSTU_ij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#Y#_#b#h#j$W$j%W%Z%[%_%a%b%c%e%i%t%|&Q&X&_&i&v&z'p'z(|)T*b*f*k*z*}+j+q,S,Y,^,_-d-i-q-{.j.{.|.}/P/T/W/Y/h/q0U0`0s2S2[2l3P3R3S3]3d5X5g5q6e7R7s8X8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:PT#i_#jQ#l_R'r#j$naORSTUij{!Q!U!Z!^!k!s!w!y!|!}#O#P#Q#R#S#T#U#V#W#_#b$W$j%W%Z%[%_%a%b%c%e%i%t%|&X&_&i&v&z'z(|)T*b*f*k+j+q,S,Y-d-i-q-{.j.{.|.}/P/T/W/Y/q0U0`2S2l3P3R3S3d5X5g5q7R7s8X!k9}#Y#h&Q'p*z*},_/h0s2[3]6e8i8k8n8o8p8q8r8s8t8u8v8w8x8y8z8}9W9X9Z9b9c9f9g:P#RcOSUi{!Q!U!k!y#h$W%W%Z%[%_%a%b%c%e%i%|&_'p)T*b*f*k+j,_-d-q.j.{.|.}/P/T/W/Y0s2S2l3P3R3S5X5gt#w`!v$O$P$T(P(R(S(Z(o(p,P-f0{1g9|:S:T!|&u!t#a#s#u&`'v(_)S)U)X)u)x+k,z,|-p-r.^.a.i.k1U1`1n1q1u2T2k2m4U4b4j5T5Y6d6p7k9Q9S9U9[9^9`9d9hQ(y$Rc0q8|9R9T9V9]9_9a9e9it#t`!v$O$P$T(P(R(S(Z(o(p,P-f0{1g9|:S:TS(f#v(iQ(z$SQ-W(g!|9q!t#a#s#u&`'v(_)S)U)X)u)x+k,z,|-p-r.^.a.i.k1U1`1n1q1u2T2k2m4U4b4j5T5Y6d6p7k9Q9S9U9[9^9`9d9hb9r8|9R9T9V9]9_9a9e9iQ9v:QR9w:RleOSi{!k$W%_%b%c%e*f*k/T/WQ(^#uQ*r%lQ*s%nR1T,z$U#x`!t!v#a#s#u$O$P$T&`'v(P(R(S(Z(_(o(p)S)U)X)u)x+k,P,z,|-f-p-r.^.a.i.k0{1U1`1g1n1q1u2T2k2m4U4b4j5T5Y6d6p7k8|9Q9R9S9T9U9V9[9]9^9_9`9a9d9e9h9i9|:S:TQ)w$yQ.`)yQ2W._R4u2XT(h#v(iS(h#v(iT2`.g2aQ)Y$aQ-V(fQ-w)ZQ.n*SQ2p.oQ5[2qQ6g4yQ6t5]Q7d6hQ7m6uQ7|7eQ8[7}Q8c8]R8g8dl(P#q&w({,q,y-_-`0]1k4O4d9p9z9{!`9[&s'b(V(]+h+|,f,}-k-n.]._0P0[1S1W1t2V2X2i3s4V4]4f4k4s5W5z6V6]6rZ9]0p3y5|7W7vn(R#q&w({,o,q,y-_-`0]1k4O4d9p9z9{!b9^&s'b(V(]+h+|,f,}-k-n.]._0P0Y0[1S1W1t2V2X2i3s4V4]4f4k4s5W5z6V6]6r]9_0p3y5|5}7W7vpdOSiw{!k$W%U%_%b%c%e*f*k/T/WQ%RvR*b%[pdOSiw{!k$W%U%_%b%c%e*f*k/T/WR%RvQ){$zR.[)tqdOSiw{!k$W%U%_%b%c%e*f*k/T/WQ.h*QS2j.l.mW5S2g2h2i2nU6o5U5V5WU7i6n6q6rQ8Q7jR8_8RQ%YwR*[%UR2w.uR6w5_S$in$nR.Q)eQ%_xR*f%`R*l%fT/U*k/WQiOQ!kST$Zi!kQ'x#pR,g'xQ!WQR%q!WQ![RU%u![%v*wQ%v!]R*w%wQ+S&RR/j+SQ,Q&wR0^,QQ,T&yS0a,T0bR0b,UQ+a&]R/u+aQ&Z!cQ*x%xT+]&Z*xQ+V&UR/l+VQ&n!pQ+s&lU+w&n+s0XR0X+xQ'k#fR,`'kQ#j_R'q#jQ#`YU'a#`*u8{Q*u8jR8{'nQ,t(WW1O,t1P4S6UU1P,u,v,wS4S1Q1RR6U4T#q'}#q&s&w'b(V(](v(w({+h+z+{+|,f,o,p,q,y,}-_-`-k-n.]._0P0Y0Z0[0]0p1S1W1k1t2V2X2i3s3w3x3y4O4V4]4d4f4k4s5W5z5|5}6O6V6]6r7W7v9p9z9{Q,{(]U1V,{1X4WQ1X,}R4W1WQ(i#vR-X(iQ(r#zR-b(rQ1o-kR4g1oQ)r$tR.Z)rQ2Z.bS4w2Z6fR6f4xQ)}${R.e)}Q2a.gR4|2aQ.t*XS2u.t5`R5`2wQ-})bS1|-}4nR4n1}Q)f$iR.R)fQ/W*kR3V/WWhOSi!kQ%d{Q)O$WQ*e%_Q*g%bQ*h%cQ*j%eQ/R*fS/U*k/WR3U/TQ$YfQ%h!PQ%k!RQ%m!SQ%o!TQ)m$oQ)s$uQ*Z%YQ*p%jS.w*[*_Q/_*oQ/`*rQ/a*sS/p+^2^Q1Y-PQ1Z-QQ1a-VQ2P.UQ2U.]Q2o.nQ2y.yQ3T/SY3c/r/s/x/|5OQ4X1[Q4Z1^Q4^1bQ4q2RQ4t2VQ5Z2pQ5a2x[5o3b3e3h3j3k6lQ6W4YQ6Z4_Q6b4oQ6s5[Q6x5bW7O5p5t5v5xQ7Y6XQ7[6[Q7`6cQ7c6gQ7l6tU7p7P7T7VQ7w7ZQ7y7^Q7{7dQ8S7mS8U7q7uQ8Y7xQ8Z7|Q8`8VQ8b8[Q8e8aQ8f8cR8h8gQ$clQ&b!gU)]$d$e$fQ*|&OU+m&c&d&eQ-P(cS-y)^)_Q/g+OQ/o+^S0R+n+oQ1^-TQ1w-zQ3`/mS3f/t/xQ3p0SQ4_1cS5s3g3kQ7S5uR7t7US#r`9|R)W$`U#z`$`9|R-a(qQ#q`S&s!t)XQ&w!vQ'b#aQ(V#sQ(]#uQ(v$OQ(w$PQ({$TQ+h&`Q+z9QQ+{9SQ+|9UQ,f'vQ,o(PQ,p(RQ,q(SQ,y(ZQ,}(_Q-_(oQ-`(pd-k)S-p.i1q2k4j5T6d6p7kQ-n)UQ.])uQ._)xQ0P+kQ0Y9[Q0Z9^Q0[9`Q0],PQ0p8|Q1S,zQ1W,|Q1k-fQ1t-rQ2V.^Q2X.aQ2i.kQ3s9dQ3w9RQ3x9TQ3y9VQ4O0{Q4V1UQ4]1`Q4d1gQ4f1nQ4k1uQ4s2TQ5W2mQ5z9hQ5|9aQ5}9]Q6O9_Q6V4UQ6]4bQ6r5YQ7W9eQ7v9iQ9p9|Q9z:SR9{:TT'w#p'xlfOSi{!k$W%_%b%c%e*f*k/T/WS!mU%aQ%j!QQ%p!UQ'O!yQ'o#hS*_%W%ZQ*c%[Q*o%iQ*y%|Q+g&_Q,d'pQ-m)TQ/O*bQ0O+jQ0v,_Q1i-dQ1s-qQ2h.jQ2{.{Q2|.|Q3O.}Q3Q/PQ3X/YQ3|0sQ4r2SQ5V2lQ5f3PQ5h3RQ5i3SQ6q5XR6z5g!vYOSUi{!Q!k!y$W%W%Z%[%_%a%b%c%e%i%|&_)T*b*f*k+j-d-q.j.{.|.}/P/T/W/Y2S2l3P3R3S5X5gQ!]RQ!lTQ$[jQ%s!ZQ%w!^Q&r!sQ&y!wQ'P!|Q'Q!}Q'R#OQ'S#PQ'T#QQ'U#RQ'V#SQ'W#TQ'X#UQ'Y#VQ'Z#WQ']#YQ'`#_Q'd#bW'n#h'p,_0sQ)g$jQ*v%tS+P&Q/hQ+Y&XQ+p&iQ,O&vQ,U&zQ,X8iQ,Z8kQ,i'zQ-g(|Q/c*zQ/f*}Q0T+qQ0_,SQ0c8nQ0d8oQ0e8pQ0f8qQ0g8rQ0h8sQ0i8tQ0j8uQ0k8vQ0l8wQ0m8xQ0n8yQ0o,YQ0r8}Q0w8zQ1l-iQ1x-{Q3_9WQ3b/qQ3q0UQ3t0`Q3u9XQ3z9ZQ3{9bQ4x2[Q5m3]Q5p3dQ5{9cQ6P9fQ6Q9gQ7P5qQ7b6eQ7q7RQ8V7sQ8a8XQ8j!UR9u:PT!VQ!WR!_RR&S!`S&O!`+RS+O&P&WR/m+XR&x!vR&{!wT!qU$US!pU$UU$tpq*dS&l!o!rQ+u&mQ+x&pQ.Y)qS0V+t+vR3r0W[!bR!^$q&Y)o+[h!nUpq!o!r$U&m&p)q+t+v0WQ/Q*dQ/d*{Q3[/^T9m&Q)pT!dR$qS!cR$qS%x!^)oS+Q&Q)pQ+Z&YR/n+[T&V!`$rQ#f]R't#kT'j#f'kR0u,^T(Y#s(bR(`#uQ-l)SQ1r-pQ2g.iQ4h1qQ5U2kQ6`4jQ6n5TQ7a6dQ7j6pR8R7klgOSi{!k$W%_%b%c%e*f*k/T/WQ%XwR*Z%UV$upq*dR.c)zR*Y%SQ$mnR)l$nR)c$hT%]x%`T%^x%`T/V*k/W",
-	  nodeNames: "⚠ ArithOp ArithOp extends LineComment BlockComment Script ExportDeclaration export Star as VariableName from String ; default FunctionDeclaration async function VariableDefinition TypeParamList TypeDefinition ThisType this LiteralType ArithOp Number BooleanLiteral TemplateType VoidType void TypeofType typeof MemberExpression . ?. PropertyName [ TemplateString null super RegExp ] ArrayExpression Spread , } { ObjectExpression Property async get set PropertyNameDefinition Block : NewExpression new TypeArgList CompareOp < ) ( ArgList UnaryExpression await yield delete LogicOp BitOp ParenthesizedExpression ClassExpression class extends ClassBody MethodDeclaration Privacy static abstract PropertyDeclaration readonly Optional TypeAnnotation Equals FunctionExpression ArrowFunction ParamList ParamList ArrayPattern ObjectPattern PatternProperty Privacy readonly Arrow MemberExpression BinaryExpression ArithOp ArithOp ArithOp ArithOp BitOp CompareOp in instanceof const CompareOp BitOp BitOp BitOp LogicOp LogicOp ConditionalExpression LogicOp LogicOp AssignmentExpression UpdateOp PostfixExpression CallExpression TaggedTemplatExpression DynamicImport import ImportMeta JSXElement JSXSelfCloseEndTag JSXStartTag JSXSelfClosingTag JSXIdentifier JSXNamespacedName JSXMemberExpression JSXSpreadAttribute JSXAttribute JSXAttributeValue JSXEscape JSXEndTag JSXOpenTag JSXFragmentTag JSXText JSXEscape JSXStartCloseTag JSXCloseTag PrefixCast ArrowFunction TypeParamList SequenceExpression KeyofType keyof UniqueType unique ImportType InferredType infer TypeName ParenthesizedType FunctionSignature ParamList NewSignature IndexedType TupleType Label ArrayType ReadonlyType ObjectType MethodType PropertyType IndexSignature CallSignature TypePredicate is NewSignature new UnionType LogicOp IntersectionType LogicOp ConditionalType ParameterizedType ClassDeclaration abstract implements type VariableDeclaration let var TypeAliasDeclaration InterfaceDeclaration interface EnumDeclaration enum EnumBody NamespaceDeclaration namespace module AmbientDeclaration declare GlobalDeclaration global ClassDeclaration ClassBody MethodDeclaration AmbientFunctionDeclaration ExportGroup VariableName VariableName ImportDeclaration ImportGroup ForStatement for ForSpec ForInSpec ForOfSpec of WhileStatement while WithStatement with DoStatement do IfStatement if else SwitchStatement switch SwitchBody CaseLabel case DefaultLabel TryStatement try catch finally ReturnStatement return ThrowStatement throw BreakStatement break ContinueStatement continue DebuggerStatement debugger LabeledStatement ExpressionStatement",
-	  maxTerm: 325,
-	  context: trackNewline,
-	  nodeProps: [
-	    [NodeProp.group, -26,7,14,16,54,176,180,183,184,186,189,192,203,205,211,213,215,217,220,226,230,232,234,236,238,240,241,"Statement",-30,11,13,23,26,27,38,39,40,41,43,48,56,64,70,71,84,85,94,95,111,114,116,117,118,119,121,122,140,141,143,"Expression",-22,22,24,28,29,31,144,146,148,149,151,152,153,155,156,157,159,160,161,170,172,174,175,"Type",-2,75,79,"ClassItem"],
-	    [NodeProp.closedBy, 37,"]",47,"}",62,")",124,"JSXSelfCloseEndTag JSXEndTag",138,"JSXEndTag"],
-	    [NodeProp.openedBy, 42,"[",46,"{",61,"(",123,"JSXStartTag",133,"JSXStartTag JSXStartCloseTag"]
-	  ],
-	  skippedNodes: [0,4,5],
-	  repeatNodeCount: 28,
-	  tokenData: "!As~R!`OX%TXY%cYZ'RZ[%c[]%T]^'R^p%Tpq%cqr'crs(kst%Ttu0huv2xvw3mwx4kxy;Ryz;cz{;s{|<s|}=W}!O<s!O!P=h!P!QAt!Q!R!.d!R![!/y![!]!5i!]!^!5{!^!_!6]!_!`!7Y!`!a!8Q!a!b!9w!b!c%T!c!}0h!}#O!;Y#O#P%T#P#Q!;j#Q#R!;z#R#S0h#S#T!<_#T#o0h#o#p!<o#p#q!<t#q#r!=[#r#s!=n#s$f%T$f$g%c$g#BY0h#BY#BZ!>O#BZ$IS0h$IS$I_!>O$I_$I|0h$I|$I}!@g$I}$JO!@g$JO$JT0h$JT$JU!>O$JU$KV0h$KV$KW!>O$KW&FU0h&FU&FV!>O&FV?HT0h?HT?HU!>O?HU~0hW%YR#|WO!^%T!_#o%T#p~%T,T%jg#|W'P+{OX%TXY%cYZ%TZ[%c[p%Tpq%cq!^%T!_#o%T#p$f%T$f$g%c$g#BY%T#BY#BZ%c#BZ$IS%T$IS$I_%c$I_$JT%T$JT$JU%c$JU$KV%T$KV$KW%c$KW&FU%T&FU&FV%c&FV?HT%T?HT?HU%c?HU~%T,T'YR#|W'Q+{O!^%T!_#o%T#p~%T$T'jS#|W!f#{O!^%T!_!`'v!`#o%T#p~%T$O'}S#]#v#|WO!^%T!_!`(Z!`#o%T#p~%T$O(bR#]#v#|WO!^%T!_#o%T#p~%T'u(rZ#|W]!ROY(kYZ)eZr(krs*rs!^(k!^!_+U!_#O(k#O#P-b#P#o(k#o#p+U#p~(k&r)jV#|WOr)ers*Ps!^)e!^!_*a!_#o)e#o#p*a#p~)e&r*WR#w&j#|WO!^%T!_#o%T#p~%T&j*dROr*ars*ms~*a&j*rO#w&j'u*{R#w&j#|W]!RO!^%T!_#o%T#p~%T'm+ZV]!ROY+UYZ*aZr+Urs+ps#O+U#O#P+w#P~+U'm+wO#w&j]!R'm+zROr+Urs,Ts~+U'm,[U#w&j]!ROY,nZr,nrs-Vs#O,n#O#P-[#P~,n!R,sU]!ROY,nZr,nrs-Vs#O,n#O#P-[#P~,n!R-[O]!R!R-_PO~,n'u-gV#|WOr(krs-|s!^(k!^!_+U!_#o(k#o#p+U#p~(k'u.VZ#w&j#|W]!ROY.xYZ%TZr.xrs/rs!^.x!^!_,n!_#O.x#O#P0S#P#o.x#o#p,n#p~.x!Z/PZ#|W]!ROY.xYZ%TZr.xrs/rs!^.x!^!_,n!_#O.x#O#P0S#P#o.x#o#p,n#p~.x!Z/yR#|W]!RO!^%T!_#o%T#p~%T!Z0XT#|WO!^.x!^!_,n!_#o.x#o#p,n#p~.x&i0s_#|W#rS'S%k'`pOt%Ttu0hu}%T}!O1r!O!Q%T!Q![0h![!^%T!_!c%T!c!}0h!}#R%T#R#S0h#S#T%T#T#o0h#p$g%T$g~0h[1y_#|W#rSOt%Ttu1ru}%T}!O1r!O!Q%T!Q![1r![!^%T!_!c%T!c!}1r!}#R%T#R#S1r#S#T%T#T#o1r#p$g%T$g~1r$O3PS#U#v#|WO!^%T!_!`3]!`#o%T#p~%T$O3dR#|W#g#vO!^%T!_#o%T#p~%T%r3tU'q%j#|WOv%Tvw4Ww!^%T!_!`3]!`#o%T#p~%T$O4_S#|W#a#vO!^%T!_!`3]!`#o%T#p~%T'u4rZ#|W]!ROY4kYZ5eZw4kwx*rx!^4k!^!_6]!_#O4k#O#P8]#P#o4k#o#p6]#p~4k&r5jV#|WOw5ewx*Px!^5e!^!_6P!_#o5e#o#p6P#p~5e&j6SROw6Pwx*mx~6P'm6bV]!ROY6]YZ6PZw6]wx+px#O6]#O#P6w#P~6]'m6zROw6]wx7Tx~6]'m7[U#w&j]!ROY7nZw7nwx-Vx#O7n#O#P8V#P~7n!R7sU]!ROY7nZw7nwx-Vx#O7n#O#P8V#P~7n!R8YPO~7n'u8bV#|WOw4kwx8wx!^4k!^!_6]!_#o4k#o#p6]#p~4k'u9QZ#w&j#|W]!ROY9sYZ%TZw9swx/rx!^9s!^!_7n!_#O9s#O#P:m#P#o9s#o#p7n#p~9s!Z9zZ#|W]!ROY9sYZ%TZw9swx/rx!^9s!^!_7n!_#O9s#O#P:m#P#o9s#o#p7n#p~9s!Z:rT#|WO!^9s!^!_7n!_#o9s#o#p7n#p~9s%V;YR!`$}#|WO!^%T!_#o%T#p~%TZ;jR!_R#|WO!^%T!_#o%T#p~%T%R;|U'T!R#V#v#|WOz%Tz{<`{!^%T!_!`3]!`#o%T#p~%T$O<gS#S#v#|WO!^%T!_!`3]!`#o%T#p~%T$u<zSi$m#|WO!^%T!_!`3]!`#o%T#p~%T&i=_R}&a#|WO!^%T!_#o%T#p~%T&i=oVr%n#|WO!O%T!O!P>U!P!Q%T!Q![>z![!^%T!_#o%T#p~%Ty>ZT#|WO!O%T!O!P>j!P!^%T!_#o%T#p~%Ty>qR|q#|WO!^%T!_#o%T#p~%Ty?RZ#|WjqO!Q%T!Q![>z![!^%T!_!g%T!g!h?t!h#R%T#R#S>z#S#X%T#X#Y?t#Y#o%T#p~%Ty?yZ#|WO{%T{|@l|}%T}!O@l!O!Q%T!Q![AW![!^%T!_#R%T#R#SAW#S#o%T#p~%Ty@qV#|WO!Q%T!Q![AW![!^%T!_#R%T#R#SAW#S#o%T#p~%TyA_V#|WjqO!Q%T!Q![AW![!^%T!_#R%T#R#SAW#S#o%T#p~%T,TA{`#|W#T#vOYB}YZ%TZzB}z{Ht{!PB}!P!Q!+m!Q!^B}!^!_EQ!_!`!,f!`!a!-e!a!}B}!}#OFy#O#PHY#P#oB}#o#pEQ#p~B}XCU[#|WyPOYB}YZ%TZ!PB}!P!QCz!Q!^B}!^!_EQ!_!}B}!}#OFy#O#PHY#P#oB}#o#pEQ#p~B}XDR_#|WyPO!^%T!_#Z%T#Z#[Cz#[#]%T#]#^Cz#^#a%T#a#bCz#b#g%T#g#hCz#h#i%T#i#jCz#j#m%T#m#nCz#n#o%T#p~%TPEVVyPOYEQZ!PEQ!P!QEl!Q!}EQ!}#OFT#O#PFp#P~EQPEqUyP#Z#[El#]#^El#a#bEl#g#hEl#i#jEl#m#nElPFWTOYFTZ#OFT#O#PFg#P#QEQ#Q~FTPFjQOYFTZ~FTPFsQOYEQZ~EQXGOY#|WOYFyYZ%TZ!^Fy!^!_FT!_#OFy#O#PGn#P#QB}#Q#oFy#o#pFT#p~FyXGsV#|WOYFyYZ%TZ!^Fy!^!_FT!_#oFy#o#pFT#p~FyXH_V#|WOYB}YZ%TZ!^B}!^!_EQ!_#oB}#o#pEQ#p~B},TH{^#|WyPOYHtYZIwZzHtz{LY{!PHt!P!Q!*Z!Q!^Ht!^!_Ne!_!}Ht!}#O!&U#O#P!)i#P#oHt#o#pNe#p~Ht,TI|V#|WOzIwz{Jc{!^Iw!^!_Ke!_#oIw#o#pKe#p~Iw,TJhX#|WOzIwz{Jc{!PIw!P!QKT!Q!^Iw!^!_Ke!_#oIw#o#pKe#p~Iw,TK[R#|WT+{O!^%T!_#o%T#p~%T+{KhROzKez{Kq{~Ke+{KtTOzKez{Kq{!PKe!P!QLT!Q~Ke+{LYOT+{,TLa^#|WyPOYHtYZIwZzHtz{LY{!PHt!P!QM]!Q!^Ht!^!_Ne!_!}Ht!}#O!&U#O#P!)i#P#oHt#o#pNe#p~Ht,TMf_#|WT+{yPO!^%T!_#Z%T#Z#[Cz#[#]%T#]#^Cz#^#a%T#a#bCz#b#g%T#g#hCz#h#i%T#i#jCz#j#m%T#m#nCz#n#o%T#p~%T+{NjYyPOYNeYZKeZzNez{! Y{!PNe!P!Q!%Q!Q!}Ne!}#O!!h#O#P!$n#P~Ne+{! _YyPOYNeYZKeZzNez{! Y{!PNe!P!Q! }!Q!}Ne!}#O!!h#O#P!$n#P~Ne+{!!UUT+{yP#Z#[El#]#^El#a#bEl#g#hEl#i#jEl#m#nEl+{!!kWOY!!hYZKeZz!!hz{!#T{#O!!h#O#P!$[#P#QNe#Q~!!h+{!#WYOY!!hYZKeZz!!hz{!#T{!P!!h!P!Q!#v!Q#O!!h#O#P!$[#P#QNe#Q~!!h+{!#{TT+{OYFTZ#OFT#O#PFg#P#QEQ#Q~FT+{!$_TOY!!hYZKeZz!!hz{!#T{~!!h+{!$qTOYNeYZKeZzNez{! Y{~Ne+{!%V_yPOzKez{Kq{#ZKe#Z#[!%Q#[#]Ke#]#^!%Q#^#aKe#a#b!%Q#b#gKe#g#h!%Q#h#iKe#i#j!%Q#j#mKe#m#n!%Q#n~Ke,T!&Z[#|WOY!&UYZIwZz!&Uz{!'P{!^!&U!^!_!!h!_#O!&U#O#P!(w#P#QHt#Q#o!&U#o#p!!h#p~!&U,T!'U^#|WOY!&UYZIwZz!&Uz{!'P{!P!&U!P!Q!(Q!Q!^!&U!^!_!!h!_#O!&U#O#P!(w#P#QHt#Q#o!&U#o#p!!h#p~!&U,T!(XY#|WT+{OYFyYZ%TZ!^Fy!^!_FT!_#OFy#O#PGn#P#QB}#Q#oFy#o#pFT#p~Fy,T!(|X#|WOY!&UYZIwZz!&Uz{!'P{!^!&U!^!_!!h!_#o!&U#o#p!!h#p~!&U,T!)nX#|WOYHtYZIwZzHtz{LY{!^Ht!^!_Ne!_#oHt#o#pNe#p~Ht,T!*bc#|WyPOzIwz{Jc{!^Iw!^!_Ke!_#ZIw#Z#[!*Z#[#]Iw#]#^!*Z#^#aIw#a#b!*Z#b#gIw#g#h!*Z#h#iIw#i#j!*Z#j#mIw#m#n!*Z#n#oIw#o#pKe#p~Iw,T!+tV#|WS+{OY!+mYZ%TZ!^!+m!^!_!,Z!_#o!+m#o#p!,Z#p~!+m+{!,`QS+{OY!,ZZ~!,Z$P!,o[#|W#g#vyPOYB}YZ%TZ!PB}!P!QCz!Q!^B}!^!_EQ!_!}B}!}#OFy#O#PHY#P#oB}#o#pEQ#p~B}]!-n[#oS#|WyPOYB}YZ%TZ!PB}!P!QCz!Q!^B}!^!_EQ!_!}B}!}#OFy#O#PHY#P#oB}#o#pEQ#p~B}y!.kd#|WjqO!O%T!O!P>z!P!Q%T!Q![!/y![!^%T!_!g%T!g!h?t!h#R%T#R#S!/y#S#U%T#U#V!1a#V#X%T#X#Y?t#Y#b%T#b#c!1P#c#d!2o#d#l%T#l#m!3w#m#o%T#p~%Ty!0Q_#|WjqO!O%T!O!P>z!P!Q%T!Q![!/y![!^%T!_!g%T!g!h?t!h#R%T#R#S!/y#S#X%T#X#Y?t#Y#b%T#b#c!1P#c#o%T#p~%Ty!1WR#|WjqO!^%T!_#o%T#p~%Ty!1fW#|WO!Q%T!Q!R!2O!R!S!2O!S!^%T!_#R%T#R#S!2O#S#o%T#p~%Ty!2VW#|WjqO!Q%T!Q!R!2O!R!S!2O!S!^%T!_#R%T#R#S!2O#S#o%T#p~%Ty!2tV#|WO!Q%T!Q!Y!3Z!Y!^%T!_#R%T#R#S!3Z#S#o%T#p~%Ty!3bV#|WjqO!Q%T!Q!Y!3Z!Y!^%T!_#R%T#R#S!3Z#S#o%T#p~%Ty!3|Z#|WO!Q%T!Q![!4o![!^%T!_!c%T!c!i!4o!i#R%T#R#S!4o#S#T%T#T#Z!4o#Z#o%T#p~%Ty!4vZ#|WjqO!Q%T!Q![!4o![!^%T!_!c%T!c!i!4o!i#R%T#R#S!4o#S#T%T#T#Z!4o#Z#o%T#p~%T%w!5rR!XV#|W#e%hO!^%T!_#o%T#p~%T!P!6SR^w#|WO!^%T!_#o%T#p~%T+c!6hR'Xd!]%Y#p&s'uP!P!Q!6q!^!_!6v!_!`!7TW!6vO$OW#v!6{P#W#v!_!`!7O#v!7TO#g#v#v!7YO#X#v%w!7aT!u%o#|WO!^%T!_!`'v!`!a!7p!a#o%T#p~%T$P!7wR#P#w#|WO!^%T!_#o%T#p~%T%w!8]T'W!s#X#v#yS#|WO!^%T!_!`!8l!`!a!8|!a#o%T#p~%T$O!8sR#X#v#|WO!^%T!_#o%T#p~%T$O!9TT#W#v#|WO!^%T!_!`3]!`!a!9d!a#o%T#p~%T$O!9kS#W#v#|WO!^%T!_!`3]!`#o%T#p~%T%w!:OV'i%o#|WO!O%T!O!P!:e!P!^%T!_!a%T!a!b!:u!b#o%T#p~%T$`!:lRs$W#|WO!^%T!_#o%T#p~%T$O!:|S#|W#b#vO!^%T!_!`3]!`#o%T#p~%T&e!;aRu&]#|WO!^%T!_#o%T#p~%TZ!;qRzR#|WO!^%T!_#o%T#p~%T$O!<RS#_#v#|WO!^%T!_!`3]!`#o%T#p~%T$P!<fR#|W']#wO!^%T!_#o%T#p~%T~!<tO!P~%r!<{T'p%j#|WO!^%T!_!`3]!`#o%T#p#q!:u#q~%T$u!=eR!O$k#|W'_QO!^%T!_#o%T#p~%TX!=uR!gP#|WO!^%T!_#o%T#p~%T,T!>]r#|W'P+{#rS'S%k'`pOX%TXY%cYZ%TZ[%c[p%Tpq%cqt%Ttu0hu}%T}!O1r!O!Q%T!Q![0h![!^%T!_!c%T!c!}0h!}#R%T#R#S0h#S#T%T#T#o0h#p$f%T$f$g%c$g#BY0h#BY#BZ!>O#BZ$IS0h$IS$I_!>O$I_$JT0h$JT$JU!>O$JU$KV0h$KV$KW!>O$KW&FU0h&FU&FV!>O&FV?HT0h?HT?HU!>O?HU~0h,T!@t_#|W'Q+{#rS'S%k'`pOt%Ttu0hu}%T}!O1r!O!Q%T!Q![0h![!^%T!_!c%T!c!}0h!}#R%T#R#S0h#S#T%T#T#o0h#p$g%T$g~0h",
-	  tokenizers: [noSemicolon, incdecToken, template, 0, 1, 2, 3, 4, 5, 6, 7, 8, insertSemicolon],
-	  topRules: {"Script":[0,6]},
-	  dialects: {jsx: 11129, ts: 11131},
-	  dynamicPrecedences: {"141":1,"168":1},
-	  specialized: [{term: 280, get: (value, stack) => (tsExtends(value, stack) << 1) | 1},{term: 280, get: value => spec_identifier[value] || -1},{term: 292, get: value => spec_word[value] || -1},{term: 59, get: value => spec_LessThan[value] || -1}],
-	  tokenPrec: 11151
-	});
+	  function nextUntilUnescaped(stream, end) {
+	    var escaped = false, next;
+	    while ((next = stream.next()) != null) {
+	      if (next === end && !escaped) {
+	        return false;
+	      }
+	      escaped = !escaped && next === "\\";
+	    }
+	    return escaped;
+	  }
 
-	/**
-	A collection of JavaScript-related
-	[snippets](https://codemirror.net/6/docs/ref/#autocomplete.snippet).
-	*/
-	const snippets = [
-	    /*@__PURE__*/snippetCompletion("function ${name}(${params}) {\n\t${}\n}", {
-	        label: "function",
-	        detail: "definition",
-	        type: "keyword"
-	    }),
-	    /*@__PURE__*/snippetCompletion("for (let ${index} = 0; ${index} < ${bound}; ${index}++) {\n\t${}\n}", {
-	        label: "for",
-	        detail: "loop",
-	        type: "keyword"
-	    }),
-	    /*@__PURE__*/snippetCompletion("for (let ${name} of ${collection}) {\n\t${}\n}", {
-	        label: "for",
-	        detail: "of loop",
-	        type: "keyword"
-	    }),
-	    /*@__PURE__*/snippetCompletion("try {\n\t${}\n} catch (${error}) {\n\t${}\n}", {
-	        label: "try",
-	        detail: "block",
-	        type: "keyword"
-	    }),
-	    /*@__PURE__*/snippetCompletion("class ${name} {\n\tconstructor(${params}) {\n\t\t${}\n\t}\n}", {
-	        label: "class",
-	        detail: "definition",
-	        type: "keyword"
-	    }),
-	    /*@__PURE__*/snippetCompletion("import {${names}} from \"${module}\"\n${}", {
-	        label: "import",
-	        detail: "named",
-	        type: "keyword"
-	    }),
-	    /*@__PURE__*/snippetCompletion("import ${name} from \"${module}\"\n${}", {
-	        label: "import",
-	        detail: "default",
-	        type: "keyword"
-	    })
-	];
+	  function clikeComment(stream, state) {
+	    var maybeEnd = false, ch;
+	    while ((ch = stream.next()) != null) {
+	      if (ch === "/" && maybeEnd) {
+	        state.tokenize = null;
+	        break;
+	      }
+	      maybeEnd = (ch === "*");
+	    }
+	    return "comment";
+	  }
 
-	/**
-	A language provider based on the [Lezer JavaScript
-	parser](https://github.com/lezer-parser/javascript), extended with
-	highlighting and indentation information.
-	*/
-	const javascriptLanguage = /*@__PURE__*/LRLanguage.define({
-	    parser: /*@__PURE__*/parser.configure({
-	        props: [
-	            /*@__PURE__*/indentNodeProp.add({
-	                IfStatement: /*@__PURE__*/continuedIndent({ except: /^\s*({|else\b)/ }),
-	                TryStatement: /*@__PURE__*/continuedIndent({ except: /^\s*({|catch\b|finally\b)/ }),
-	                LabeledStatement: flatIndent,
-	                SwitchBody: context => {
-	                    let after = context.textAfter, closed = /^\s*\}/.test(after), isCase = /^\s*(case|default)\b/.test(after);
-	                    return context.baseIndent + (closed ? 0 : isCase ? 1 : 2) * context.unit;
-	                },
-	                Block: /*@__PURE__*/delimitedIndent({ closing: "}" }),
-	                ArrowFunction: cx => cx.baseIndent + cx.unit,
-	                "TemplateString BlockComment": () => -1,
-	                "Statement Property": /*@__PURE__*/continuedIndent({ except: /^{/ }),
-	                JSXElement(context) {
-	                    let closed = /^\s*<\//.test(context.textAfter);
-	                    return context.lineIndent(context.node.from) + (closed ? 0 : context.unit);
-	                },
-	                JSXEscape(context) {
-	                    let closed = /\s*\}/.test(context.textAfter);
-	                    return context.lineIndent(context.node.from) + (closed ? 0 : context.unit);
-	                },
-	                "JSXOpenTag JSXSelfClosingTag"(context) {
-	                    return context.column(context.node.from) + context.unit;
-	                }
-	            }),
-	            /*@__PURE__*/foldNodeProp.add({
-	                "Block ClassBody SwitchBody EnumBody ObjectExpression ArrayExpression": foldInside$1,
-	                BlockComment(tree) { return { from: tree.from + 2, to: tree.to - 2 }; }
-	            }),
-	            /*@__PURE__*/styleTags({
-	                "get set async static": tags.modifier,
-	                "for while do if else switch try catch finally return throw break continue default case": tags.controlKeyword,
-	                "in of await yield void typeof delete instanceof": tags.operatorKeyword,
-	                "export import let var const function class extends": tags.definitionKeyword,
-	                "with debugger from as new": tags.keyword,
-	                TemplateString: /*@__PURE__*/tags.special(tags.string),
-	                Super: tags.atom,
-	                BooleanLiteral: tags.bool,
-	                this: tags.self,
-	                null: tags.null,
-	                Star: tags.modifier,
-	                VariableName: tags.variableName,
-	                "CallExpression/VariableName": /*@__PURE__*/tags.function(tags.variableName),
-	                VariableDefinition: /*@__PURE__*/tags.definition(tags.variableName),
-	                Label: tags.labelName,
-	                PropertyName: tags.propertyName,
-	                "CallExpression/MemberExpression/PropertyName": /*@__PURE__*/tags.function(tags.propertyName),
-	                "FunctionDeclaration/VariableDefinition": /*@__PURE__*/tags.function(/*@__PURE__*/tags.definition(tags.variableName)),
-	                "ClassDeclaration/VariableDefinition": /*@__PURE__*/tags.definition(tags.className),
-	                PropertyNameDefinition: /*@__PURE__*/tags.definition(tags.propertyName),
-	                UpdateOp: tags.updateOperator,
-	                LineComment: tags.lineComment,
-	                BlockComment: tags.blockComment,
-	                Number: tags.number,
-	                String: tags.string,
-	                ArithOp: tags.arithmeticOperator,
-	                LogicOp: tags.logicOperator,
-	                BitOp: tags.bitwiseOperator,
-	                CompareOp: tags.compareOperator,
-	                RegExp: tags.regexp,
-	                Equals: tags.definitionOperator,
-	                "Arrow : Spread": tags.punctuation,
-	                "( )": tags.paren,
-	                "[ ]": tags.squareBracket,
-	                "{ }": tags.brace,
-	                ".": tags.derefOperator,
-	                ", ;": tags.separator,
-	                TypeName: tags.typeName,
-	                TypeDefinition: /*@__PURE__*/tags.definition(tags.typeName),
-	                "type enum interface implements namespace module declare": tags.definitionKeyword,
-	                "abstract global privacy readonly override": tags.modifier,
-	                "is keyof unique infer": tags.operatorKeyword,
-	                JSXAttributeValue: tags.attributeValue,
-	                JSXText: tags.content,
-	                "JSXStartTag JSXStartCloseTag JSXSelfCloseEndTag JSXEndTag": tags.angleBracket,
-	                "JSXIdentifier JSXNameSpacedName": tags.tagName,
-	                "JSXAttribute/JSXIdentifier JSXAttribute/JSXNameSpacedName": tags.attributeName
-	            })
-	        ]
-	    }),
+	  return {
+	    startState: function() {
+	      return {
+	        tokenize: null
+	      };
+	    },
+
+	    token: function(stream, state) {
+	      if (state.tokenize) {
+	        return state.tokenize(stream, state);
+	      }
+
+	      if (stream.eatSpace()) {
+	        return null;
+	      }
+
+	      var style, cur, ch = stream.next();
+
+	      if (ch === "/") {
+	        if (stream.eat("*")) {
+	          state.tokenize = clikeComment;
+	          return clikeComment(stream, state);
+	        }
+	      }
+
+	      if (ch === lineCommentStartSymbol) {
+	        stream.skipToEnd();
+	        return "comment";
+	      }
+
+	      if (ch === '"') {
+	        nextUntilUnescaped(stream, '"');
+	        return "string";
+	      }
+
+	      if (ch === '.') {
+	        stream.eatWhile(/\w/);
+	        cur = stream.current().toLowerCase();
+	        style = directives[cur];
+	        return style || null;
+	      }
+
+	      if (ch === '=') {
+	        stream.eatWhile(/\w/);
+	        return "tag";
+	      }
+
+	      if (ch === '{') {
+	        return "bracket";
+	      }
+
+	      if (ch === '}') {
+	        return "bracket";
+	      }
+
+	      if (/\d/.test(ch)) {
+	        if (ch === "0" && stream.eat("x")) {
+	          stream.eatWhile(/[0-9a-fA-F]/);
+	          return "number";
+	        }
+	        stream.eatWhile(/\d/);
+	        return "number";
+	      }
+
+	      if (/\w/.test(ch)) {
+	        stream.eatWhile(/\w/);
+	        if (stream.eat(":")) {
+	          return 'tag';
+	        }
+	        cur = stream.current().toLowerCase();
+	        style = registers[cur];
+	        return style || null;
+	      }
+
+	      for (var i = 0; i < custom.length; i++) {
+	        style = custom[i](ch, stream, state);
+	        if (style) {
+	          return style;
+	        }
+	      }
+	    },
+
 	    languageData: {
-	        closeBrackets: { brackets: ["(", "[", "{", "'", '"', "`"] },
-	        commentTokens: { line: "//", block: { open: "/*", close: "*/" } },
-	        indentOnInput: /^\s*(?:case |default:|\{|\}|<\/)$/,
-	        wordChars: "$"
+	      commentTokens: {
+	        line: lineCommentStartSymbol,
+	        block: {open: "/*", close: "*/"}
+	      }
 	    }
-	});
-	/**
-	A language provider for TypeScript.
-	*/
-	const typescriptLanguage = /*@__PURE__*/javascriptLanguage.configure({ dialect: "ts" });
-	/**
-	Language provider for JSX.
-	*/
-	const jsxLanguage = /*@__PURE__*/javascriptLanguage.configure({ dialect: "jsx" });
-	/**
-	Language provider for JSX + TypeScript.
-	*/
-	const tsxLanguage = /*@__PURE__*/javascriptLanguage.configure({ dialect: "jsx ts" });
-	/**
-	JavaScript support. Includes [snippet](https://codemirror.net/6/docs/ref/#lang-javascript.snippets)
-	completion.
-	*/
-	function javascript(config = {}) {
-	    let lang = config.jsx ? (config.typescript ? tsxLanguage : jsxLanguage)
-	        : config.typescript ? typescriptLanguage : javascriptLanguage;
-	    return new LanguageSupport(lang, javascriptLanguage.data.of({
-	        autocomplete: ifNotIn(["LineComment", "BlockComment", "String"], completeFromList(snippets))
-	    }));
-	}
+	  };
+	};
+
+	const gas = mkGas("x86");
+	const gasArm = mkGas("arm");
 
 	class Display extends Array {
 	  constructor(size) {
 	    super(size);
 	    this.palette = new Array(
-	      "#000000", "#ffffff", "#880000", "#aaffee", "#cc44cc", "#00cc55", "#0000aa", "#eeee77",
-	      "#dd8855", "#664400", "#ff7777", "#333333", "#777777", "#aaff66", "#0088ff", "#bbbbbb"
+	      "#000000",
+	      "#ffffff",
+	      "#880000",
+	      "#aaffee",
+	      "#cc44cc",
+	      "#00cc55",
+	      "#0000aa",
+	      "#eeee77",
+	      "#dd8855",
+	      "#664400",
+	      "#ff7777",
+	      "#333333",
+	      "#777777",
+	      "#aaff66",
+	      "#0088ff",
+	      "#bbbbbb"
 	    );
 
 	    this.#createScreen();
 	    this.#linkWithScreen();
 	  }
 
-	  #createScreen () {
+	  #createScreen() {
 	    let html = '<table class="screen">';
-	    for(let y = 0; y < 32; y++) {
+	    for (let y = 0; y < 32; y++) {
 	      html += "<tr>";
-	      for(let x = 0; x < 32; x++) {
-	        html += '<td class="screen" id="x' + x + 'y' + y + '"></td>';
+	      for (let x = 0; x < 32; x++) {
+	        html += '<td class="screen" id="x' + x + "y" + y + '"></td>';
 	      }
 	      html += "</tr>";
 	    }
@@ -32803,8 +32839,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  #linkWithScreen() {
-	    for(let y = 0; y < 32; y++) {
-	      for(let x = 0; x < 32; x++) {
+	    for (let y = 0; y < 32; y++) {
+	      for (let x = 0; x < 32; x++) {
 	        let pixelId = "x" + x + "y" + y;
 	        this[y * 32 + x] = $("#" + pixelId);
 	      }
@@ -32812,25 +32848,25 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  reset() {
-	    for(let y = 0; y < 32; y++) {
-	      for(let x = 0; x < 32; x++) {
+	    for (let y = 0; y < 32; y++) {
+	      for (let x = 0; x < 32; x++) {
 	        this[y * 32 + x].css("background", "#000000");
 	      }
 	    }
 	  }
 
 	  /*
-	  *  updateDisplayFull() - Simply redraws the entire display according to memory
-	  *  The colors are supposed to be identical with the C64's palette.
-	  */
+	   *  updateDisplayFull() - Simply redraws the entire display according to memory
+	   *  The colors are supposed to be identical with the C64's palette.
+	   */
 	  updateFull() {
-	    for( let y = 0; y < 32; y++ ) {
-	      for( let x = 0; x < 32; x++ ) {
-	        this.updatePixel( ((y << 5) + x) + 0x200 );
+	    for (let y = 0; y < 32; y++) {
+	      for (let x = 0; x < 32; x++) {
+	        this.updatePixel((y << 5) + x + 0x200);
 	      }
 	    }
 	  }
-	  updatePixel( addr ) {
+	  updatePixel(addr) {
 	    let colorNibble = exports.memory.readByte(addr).lowestNibble;
 	    this[addr - 0x200].css("background", this.palette[colorNibble]);
 	  }
@@ -32841,7 +32877,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  return "[" + fmtToHexIntern(value) + "]";
 	}
 
-	function fmtToHex$1(value) {
+	function fmtToHex(value) {
 	  return "0x" + value.toString(16).padStart(2, 0);
 	}
 
@@ -32872,8 +32908,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 
 	class Debugger {
-	  constructor() {
-	  }
+	  constructor() {}
 	  toggle() {
 	    if (exports.debug) {
 	      this.disable();
@@ -32886,14 +32921,15 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    exports.debug = false;
 	    $("#stepButton").prop("disabled", true);
 	    $("#gotoButton").prop("disabled", true);
-	    if (exports.started) { //reset highlighting
+	    if (exports.started) {
+	      //reset highlighting
 	      let lastLine = exports.editor.state.doc.line(exports.lastLineNumber);
 	      exports.editor.dispatch({
 	        changes: {
-	          from : lastLine.from,
+	          from: lastLine.from,
 	          to: lastLine.to,
-	          insert: exports.lastLineText
-	        }
+	          insert: exports.lastLineText,
+	        },
 	      });
 	    }
 	  }
@@ -32909,47 +32945,123 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	  updateInfo() {
 	    let binaryMode = $("#binaryCheckbox").prop("checked");
-	    let html = "";
 
-	    html += this.#generateInfoCell("A", binaryMode ? fmtToBin(exports.reg.A) : "$" + fmtToHex$1(exports.reg.A));
-	    html += this.#generateInfoCell("X", binaryMode ? fmtToBin(exports.reg.X) : "$" + fmtToHex$1(exports.reg.X));
-	    html += this.#generateInfoCell("Y", binaryMode ? fmtToBin(exports.reg.Y) : "$" + fmtToHex$1(exports.reg.Y));
-	    html += this.#generateInfoCell("SP", binaryMode ? fmtToBin(exports.memory.regSP) : "$" + fmtToHex$1(exports.memory.regSP));
-	    html += this.#generateInfoCell("PC", binaryMode ? fmtToBin(exports.reg.PC) : "$" + fmtToHex$1(exports.reg.PC));
-	    // html += this.#generateInfoCell("SP", "$" + fmtToHex(exports.memory.regSP));
-	    // html += this.#generateInfoCell("PC", "$" + fmtToHexWord(exports.reg.PC));
+	    let infoCellIDPrefix = "debug-info-content-";
+	    let register = ["A", "X", "Y", "PC"];
+	    let infoCell = null;
 
+	    register.map((regName) => {
+	      let infoCell = $("#" + infoCellIDPrefix + regName);
+	      infoCell.html(
+	        binaryMode
+	          ? fmtToBin(exports.reg[regName])
+	          : "$" + fmtToHex(exports.reg[regName])
+	      );
+	    });
+	    infoCell = $("#" + infoCellIDPrefix + "SP");
+	    infoCell.html(
+	      binaryMode
+	        ? fmtToBin(exports.memory.regSP)
+	        : "$" + fmtToHex(exports.memory.regSP)
+	    );
 
-	    // let statusRegister = binaryMode ? "NV-BDIZC<br>" + fmtToBin(exports.flags.byte) : "$" + fmtToHex(exports.flags.byte);
-	    let statusRegister = "NV-BDIZC<br>" + fmtToBin(exports.flags.byte) + "    $" + fmtToHex$1(exports.flags.byte);
-
-	    html += "<div class='debug-info debug-info-status'><div class='debug-info-label'>P</div><div class='debug-info-content'>" + statusRegister + "</div></div>";
-
-
-	    $("#md").html(html);
+	    infoCell = $("#" + infoCellIDPrefix + "P");
+	    let statusRegister =
+	      "NV-BDIZC<br>" +
+	      fmtToBin(exports.flags.byte) +
+	      "    $" +
+	      fmtToHex(exports.flags.byte);
+	    infoCell.html(statusRegister);
 	  }
+	}
 
-	  #generateInfoCell(label, content) {
-	    return "<div class='debug-info'><div class='debug-info-label'>" + label + "</div><div class='debug-info-content'>" + content + "</div></div>"
+	/*
+	 *  printMessage() - Prints text in the message window
+	 */
+	function printMessage(text) {
+	  let obj = $("#messages");
+	  obj.append(text + "\n");
+	  obj.scrollTop = obj.scrollHeight;
+	}
+
+	function resetMessageWindow() {
+	  $("#messages").html("");
+	}
+
+	/*
+	 *  printErrorMessage() - Prints error in the message window
+	 */
+	function printErrorMessage({
+	  line = "",
+	  errMsg = "",
+	  errType = "",
+	} = {}) {
+	  exports.error = true;
+	  if (line != "") {
+	    errMsg =
+	      "<b>" + errType + "Error at line " + line + ": " + errMsg + "!</b>";
+	  } else {
+	    errMsg = "<b>" + errType + ": " + errMsg + "!</b>";
+	  }
+	  printMessage(errMsg);
+	}
+	function raiseError(line, errMsg) {
+	  printErrorMessage({ line: line, errMsg: errMsg });
+	}
+	function raiseSyntaxError(line, errMsg) {
+	  printErrorMessage({ line: line, errMsg: errMsg, errType: "Syntax" });
+	}
+	function raiseAddressingModeError(line, errMsg) {
+	  printErrorMessage({ line: line, errMsg: errMsg, errType: "AddressingMode" });
+	}
+	function raiseDCBValueError(line, errMsg) {
+	  printErrorMessage({ line: line, errMsg: errMsg, errType: "DCBValue" });
+	}
+	function raiseLabelError(line, errMsg) {
+	  printErrorMessage({ line: line, errMsg: errMsg, errType: "Label" });
+	}
+	function raiseRangeError(line, errMsg) {
+	  printErrorMessage({ line: line, errMsg: errMsg, errType: "Range" });
+	}
+	function raiseRunTimeError(line, errMsg) {
+	  printErrorMessage({ line: line, errMsg: errMsg, errType: "RunTime" });
+	}
+	function raiseStackOverflow(line, errMsg) {
+	  printErrorMessage({ line: line, errMsg: errMsg, errType: "StackOverflow" });
+	}
+	function raiseStackEmpty(line, errMsg) {
+	  printErrorMessage({ line: line, errMsg: errMsg, errType: "StackEmpty" });
+	}
+
+	function consoleDebug({ msg, bold = false } = {}) {
+	  // if (true) {
+	  if (exports.debug) {
+	    if (bold) {
+	      printMessage("<b>" + msg + "</b>");
+	      console.debug("%c" + msg, "font-weight: bold");
+	      return;
+	    }
+	    printMessage(msg);
+	    console.debug(msg);
 	  }
 	}
 
 	class Flag {
-	  constructor({set = false}={}){
+	  constructor({ set = false } = {}) {
 	    this.set = set;
 	  }
-	  isSet () {
+	  isSet() {
 	    return this.set;
 	  }
-	  isClear () {
-	    return (! this.set);
+	  isClear() {
+	    return !this.set;
 	  }
 
-	  _set () {
+	  _set() {
 	    this.set = true;
 	  }
 
-	  setByValue (value) {
+	  setByValue(value) {
 	    if (value === 1) {
 	      this.set = true;
 	      return;
@@ -32957,11 +33069,11 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.set = false;
 	  }
 
-	  clear () {
+	  clear() {
 	    this.set = false;
 	  }
 
-	  get value () {
+	  get value() {
 	    if (this.set) {
 	      return 0x1;
 	    }
@@ -32973,7 +33085,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  constructor() {
 	    this.negative = new Flag();
 	    this.overflow = new Flag();
-	    this.unused = new Flag({set : true});
+	    this.unused = new Flag({ set: true });
 	    this.break = new Flag();
 	    this.decimal = new Flag();
 	    this.interruptDisable = new Flag();
@@ -32991,36 +33103,48 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.carry.clear;
 	  }
 
-	  get byte () {
-	    return (this.negative.value << 7)
-	      + (this.overflow.value << 6)
-	      + (this.unused.value << 5)
-	      + (this.break.value << 4)
-	      + (this.decimal.value << 3)
-	      + (this.interruptDisable.value << 2)
-	      + (this.zero.value << 1)
-	      + this.carry.value;
+	  get byte() {
+	    return (
+	      (this.negative.value << 7) +
+	      (this.overflow.value << 6) +
+	      (this.unused.value << 5) +
+	      (this.break.value << 4) +
+	      (this.decimal.value << 3) +
+	      (this.interruptDisable.value << 2) +
+	      (this.zero.value << 1) +
+	      this.carry.value
+	    );
 	  }
 
-	  getByteClearedOn (flagName) {
+	  getByteClearedOn(flagName) {
 	    let byte = this.byte;
-	    switch(flagName) { //                               NV-B DIZC
-	      case "negative":         return byte & 0x7f; // 0b0111 1111
-	      case "overflow":         return byte & 0xbf; // 0b1011 1111
-	      case "unused":           return byte & 0xdf; // 0b1101 1111
-	      case "break":            return byte & 0xef; // 0b1110 1111
-	      case "decimal":          return byte & 0xf7; // 0b1111 0111
-	      case "interruptDisable": return byte & 0xfb; // 0b1111 1011
-	      case "zero":             return byte & 0xfd; // 0b1111 1101
-	      case "carry":            return byte & 0xfe; // 0b1111 1110
+	    switch (
+	      flagName //                               NV-B DIZC
+	    ) {
+	      case "negative":
+	        return byte & 0x7f; // 0b0111 1111
+	      case "overflow":
+	        return byte & 0xbf; // 0b1011 1111
+	      case "unused":
+	        return byte & 0xdf; // 0b1101 1111
+	      case "break":
+	        return byte & 0xef; // 0b1110 1111
+	      case "decimal":
+	        return byte & 0xf7; // 0b1111 0111
+	      case "interruptDisable":
+	        return byte & 0xfb; // 0b1111 1011
+	      case "zero":
+	        return byte & 0xfd; // 0b1111 1101
+	      case "carry":
+	        return byte & 0xfe; // 0b1111 1110
 	    }
 	  }
 
 	  getByteClearedOnNandV() {
-	    return (this.byte & 0x7f) & 0xbf;
+	    return this.byte & 0x7f & 0xbf;
 	  }
 
-	  setFromByte (byte) {
+	  setFromByte(byte) {
 	    this.negative.setByValue(getBit(byte, 7));
 	    this.overflow.setByValue(getBit(byte, 6));
 	    this.unused._set(); // unused is always one according to 6502 specs
@@ -33038,108 +33162,65 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  toggleZeroAndNegative(value) {
-	    if(value) {
+	    if (value) {
 	      this.zero.clear();
 	    } else {
 	      this.zero._set();
 	    }
-	    if(value & 0x80) { // 128 = 0b1000 0000 means sign bit is set
+	    if (value & 0x80) {
+	      // 128 = 0b1000 0000 means sign bit is set
 	      this.negative._set();
 	    } else {
 	      this.negative.clear();
 	    }
 	    return;
 	  }
-
 	}
 	Flags.prototype.toString = function () {
-	  let msg = "Flag content"
-	    + "\nFlagName          Value"
-	    + "\nNegative          [" + this.negative.value + "]"
-	    + "\nOverflow          [" + this.overflow.value + "]"
-	    + "\nUnused            [" + this.unused.value + "]"
-	    + "\nBreak             [" + this.break.value + "]"
-	    + "\nDecimal           [" + this.decimal.value + "]"
-	    + "\nInterruptDisable  [" + this.interruptDisable.value + "]"
-	    + "\nZero              [" + this.zero.value + "]"
-	    + "\nCarry             [" + this.carry.value + "]";
+	  let msg =
+	    "Flag content" +
+	    "\nFlagName          Value" +
+	    "\nNegative          [" +
+	    this.negative.value +
+	    "]" +
+	    "\nOverflow          [" +
+	    this.overflow.value +
+	    "]" +
+	    "\nUnused            [" +
+	    this.unused.value +
+	    "]" +
+	    "\nBreak             [" +
+	    this.break.value +
+	    "]" +
+	    "\nDecimal           [" +
+	    this.decimal.value +
+	    "]" +
+	    "\nInterruptDisable  [" +
+	    this.interruptDisable.value +
+	    "]" +
+	    "\nZero              [" +
+	    this.zero.value +
+	    "]" +
+	    "\nCarry             [" +
+	    this.carry.value +
+	    "]";
 	  console.log(msg);
 	};
 
-	/*
-	 *  printMessage() - Prints text in the message window
-	 */
-	function printMessage(text) {
-	  let obj = $("#messages");
-	  obj.html += text + "<br/>";
-	  obj.scrollTop = obj.scrollHeight;
-	}
-	function printErrorMessage ({
-	  line = "",
-	  errMsg = "",
-	  errType = "",
-	}={}) {
-	  if (line != "" ) {
-	    errMsg = "<b>"+ errType + "Error at line " + line + ": " + errMsg + "!</b>";
-	  } else {
-	    errMsg = "<b>"+ errType + ": " + errMsg + "!</b>";
-	  }
-	  printMessage(errMsg);
-	  //console.log(errMsg);
-	}
-	function raiseError (line, errMsg) {
-	  printErrorMessage({line : line, errMsg : errMsg});
-	}
-	function raiseSyntaxError (line, errMsg) {
-	  printErrorMessage({line : line, errMsg : errMsg, errType : "Syntax"});
-	}
-	function raiseAddressingModeError (line, errMsg) {
-	  printErrorMessage({line : line, errMsg : errMsg, errType : "AddressingMode"});
-	}
-	function raiseDCBValueError (line, errMsg) {
-	  printErrorMessage({line : line, errMsg : errMsg, errType : "DCBValue"});
-	}
-	function raiseLabelError (line, errMsg) {
-	  printErrorMessage({line : line, errMsg : errMsg, errType : "Label"});
-	}
-	function raiseRangeError (line, errMsg) {
-	  printErrorMessage({line : line, errMsg : errMsg, errType : "Range"});
-	}
-	function raiseRunTimeError (line, errMsg) {
-	  printErrorMessage({line : line, errMsg : errMsg, errType : "RunTime"});
-	}
-	function raiseStackOverflow (line, errMsg) {
-	  printErrorMessage({line : line, errMsg : errMsg, errType : "StackOverflow"});
-	}
-	function raiseStackEmpty (line, errMsg) {
-	  printErrorMessage({line : line, errMsg : errMsg, errType : "StackEmpty"});
-	}
-
-	function consoleDebug({msg, bold = false}={}) {
-	  if (exports.debug) {
-	    if (bold) {
-	      printMessage("<b>" + msg + "</b>");
-	      console.debug("%c" + msg, "font-weight: bold");
-	      return;
-	    }
-	    printMessage(msg);
-	    console.debug(msg);
-	  }
-	}
-
-	class Memory extends Array{
+	class Memory extends Array {
 	  constructor() {
 	    super(0xa28); // 0xa28 = 0x600 + 0x3ff is maximum memory size
 	    this.regSP = 0x100;
 	    this.size = 0xa28;
 	    this.defaultCodePC = 0x600;
-	    for( let codePC = 0x0; codePC < this.size; codePC++ ) {
-	      this[codePC] = new ByteEntry(0x00);
+	    for (let codePC = 0x0; codePC < this.size; codePC++) {
+	      this[codePC] = new ByteEntry(0x00, -1);
 	    }
 	  }
 
-	  reset(){
-	    for( let x = 0; x < this.size; x++ ) { // clear ZeroPage and Stack
+	  reset() {
+	    for (let x = 0; x < this.size; x++) {
+	      // clear ZeroPage and Stack
 	      this[x] = 0x00;
 	    }
 	    this._regSP = 0x100;
@@ -33147,38 +33228,52 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  // generell memory setter and getter --------------------------------------------------------
+	  readWord(address) {
+	    let lowerByteEntry = this.readByte(address);
+	    let lowerByte = lowerByteEntry.value;
+	    let upperByte = this.readByte(address + 1).value;
+	    let word = (upperByte << 8) + lowerByte;
+	    return new WordEntry(word, lowerByteEntry.lineNumber);
+	  }
+
 	  readByte(address) {
 	    let memoryEntry = this[address];
-	    if ( !(memoryEntry instanceof MemoryEntry)) { // pseudo type checking
-	      throw "TypeError: memoryEntry["+ memoryEntry
-	      + "] at address [" + fmtToHex(address) + "] is not of type MemoryEntry";
+	    if (!(memoryEntry instanceof MemoryEntry)) {
+	      // pseudo type checking
+	      throw (
+	        "TypeError: memoryEntry[" +
+	        memoryEntry +
+	        "] at address [" +
+	        fmtToHex(address) +
+	        "] is not of type MemoryEntry"
+	      );
 	    }
 
-	    if (! (memoryEntry instanceof LabelEntry)) { // for label insertion
+	    if (!(memoryEntry instanceof LabelEntry)) {
+	      // for label insertion
 	      memoryEntry = memoryEntry.lowerByteEntry; // make sure, this is a byte
 	    }
 
 	    return memoryEntry;
 	  }
 
-	  readWord(address) {
-	    let lowerByte = this.readByte(address).value;
-	    let upperByte = this.readByte(address + 1).value;
-	    let word = (upperByte << 8) + lowerByte;
-	    return new WordEntry(word);
+	  pushWord(wordEntry) {
+	    this.pushByte(wordEntry.lowerByteEntry);
+	    this.pushByte(wordEntry.upperByteEntry);
 	  }
 
-	  writeByte(address, memoryEntry) {
-	    if ( !(memoryEntry instanceof MemoryEntry)) { // pseudo type checking
-	      throw "TypeError: memoryEntry[" + fmtToHex(memoryEntry) + "] is not of type MemoryEntry";
+	  pushByte(byteEntry) {
+	    this.writeByte(this.defaultCodePC, byteEntry);
+
+	    let isInstruction = false;
+	    if (byteEntry instanceof OpCodeByteEntry) {
+	      isInstruction = true;
 	    }
-	    if (memoryEntry.isNaN()) {
-	      throw "Value for address " + fmtToHex(address) + " is NaN!";
-	    }
-	    if (! (memoryEntry instanceof LabelEntry)) { // for label insertion
-	      memoryEntry = memoryEntry.lowerByteEntry;
-	    }
-	    this[address] = memoryEntry;
+	    exports.addressLineNumbers[this.defaultCodePC] = {
+	      lineNumber: byteEntry.lineNumber,
+	      isInstruction: isInstruction,
+	    };
+	    this.defaultCodePC++;
 	  }
 
 	  writeWord(address, wordEntry) {
@@ -33186,27 +33281,26 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.writeByte(address + 1, wordEntry.upperByteEntry);
 	  }
 
-	  pushByteAtAddress(address, byteEntry) {
-	    this.writeByte(address, byteEntry);
-	    this.defaultCodePC++;
+	  writeByte(address, memoryEntry) {
+	    if (!(memoryEntry instanceof MemoryEntry)) {
+	      // pseudo type checking
+	      throw (
+	        "TypeError: memoryEntry[" + memoryEntry + "] is not of type MemoryEntry"
+	      );
+	    }
+	    if (memoryEntry.isNaN()) {
+	      throw "Value for address " + fmtToHex(address) + " is NaN!";
+	    }
+	    if (!(memoryEntry instanceof LabelEntry)) {
+	      // for label insertion
+	      memoryEntry = memoryEntry.lowerByteEntry;
+	    }
+	    this[address] = memoryEntry;
 	  }
-
-	  pushByte(byteEntry) {
-	    this.pushByteAtAddress(this.defaultCodePC, byteEntry);
-	  }
-
-	  pushWordAtAddress(address, wordEntry) {
-	    this.pushByteAtAddress(address, wordEntry.lowerByteEntry);
-	    this.pushByteAtAddress(address+1, wordEntry.upperByteEntry);
-	  }
-
-	  pushWord(wordEntry) {
-	    this.pushWordAtAddress(this.defaultCodePC, wordEntry);
-	  };
 
 	  // stack setter and getter ------------------------------------------------------------------
 	  popByteFromStack() {
-	    if( this.regSP < 0x100 ) {
+	    if (this.regSP < 0x100) {
 	      let addr = this.regSP + 0x100;
 	      let byteEntry = this.readByte(addr);
 	      this.regSP++; // stack shrinks forwards
@@ -33218,20 +33312,21 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	  }
 
-	  popWordFromStack () {
-	    let lowerByte = this.popByteFromStack().value + 1;
+	  popWordFromStack() {
+	    let lowerByteEntry = this.popByteFromStack();
+	    let lowerByte = lowerByteEntry.value + 1;
 	    let upperByte = this.popByteFromStack().value;
 	    let word = (upperByte << 8) + lowerByte;
-	    return new WordEntry(word);
+	    return new WordEntry(word, lowerByteEntry.lineNumber);
 	  }
 
 	  pushByteToStack(byteEntry) {
-	    if( this.regSP >= 0 ) {
+	    if (this.regSP >= 0) {
 	      this.regSP--; // stack grows backwards
 	      let addr = getLowerByte(this.regSP) + 0x100;
-	      this.pushByteAtAddress(addr, byteEntry.lowerByteEntry);
+	      this.writeByte(addr, byteEntry.lowerByteEntry);
 	    } else {
-	      raiseStackOverflow("", "Stack full: " + this.regSP );
+	      raiseStackOverflow("", "Stack full: " + this.regSP);
 	      exports.codeRunning = false;
 	    }
 	  }
@@ -33240,10 +33335,23 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.pushByteToStack(wordEntry.upperByteEntry);
 	    this.pushByteToStack(wordEntry.lowerByteEntry);
 	  }
+	 
+	  dumpHTML() {
+	    let dump = "";
+	    this.forEach((memoryEntry, address) => {
+	      dump += "<br/>";
+	      if (address == 1536) {
+	        dump += "<b>Begin of code area</b>";
+	        dump += "<br/>";
+	      }
+	      dump += "  " + fmtToHex(address) + " : " + memoryEntry.toString();
+	    });
+	    return dump;
 
+	  }
 	}
 	Memory.prototype.toString = function () {
-	  info = "Memory content: \n";
+	  let info = "Memory content: \n";
 	  this.slice(0x600).forEach((memoryEntry, address) => {
 	    address += 0x600;
 	    info += "  " + fmtToHex(address) + " : " + memoryEntry.toString() + "\n";
@@ -33257,7 +33365,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  isNaN() {
-	    if (this.value != this.value) {//if NaN
+	    if (this.value != this.value) {
+	      //if NaN
 	      return true;
 	    }
 	    return false;
@@ -33275,8 +33384,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	};
 
 	class ByteEntry extends MemoryEntry {
-	  constructor(value) {
+	  constructor(value, lineNumber) {
 	    super(value & 0xff);
+	    this.lineNumber = lineNumber;
 	  }
 
 	  get lowestNibble() {
@@ -33288,7 +33398,26 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 	ByteEntry.prototype.toString = function () {
-	  return "ByteEntry       : " + fmtToHex(this.value);
+	  return (
+	    "      ByteEntry : " +
+	    fmtToHex(this.value) +
+	    lineNumberToString.bind(this)()
+	  );
+
+	  function lineNumberToString() {
+	    
+	    if (this.value === this.lineNumber) {
+	      return "                   ";
+	    }
+	    if (typeof this.lineNumber === "undefined") {
+	      return "                   ";
+	    }
+	    if (this.lineNumber < 0) {
+	      return "                   ";
+	    }
+	    return "       at line " +
+	    this.lineNumber.toString().padStart(4, " ")
+	  }
 	};
 
 	class OpCodeByteEntry extends MemoryEntry {
@@ -33302,16 +33431,20 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 	OpCodeByteEntry.prototype.toString = function () {
-	  return "OpCodeByteEntry : "
-	    + fmtToHex(this.value)
-	    + " ["
-	    + Command.getOpCodeName(this.value)
-	    + "] at line " + this.lineNumber.toString().padStart(4, " ");
+	  return (
+	    "OpCodeByteEntry : " +
+	    fmtToHex(this.value) +
+	    " [" +
+	    Command.getOpCodeName(this.value) +
+	    "] at line " +
+	    this.lineNumber.toString().padStart(4, " ")
+	  );
 	};
 
 	class WordEntry extends MemoryEntry {
-	  constructor(value) {
+	  constructor(value, lineNumber) {
 	    super(value);
+	    this.lineNumber = lineNumber;
 	  }
 
 	  get lowerByte() {
@@ -33319,7 +33452,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  get lowerByteEntry() {
-	    return new ByteEntry(this.lowerByte);
+	    return new ByteEntry(this.lowerByte, this.lineNumber);
 	  }
 
 	  get upperByte() {
@@ -33327,7 +33460,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  get upperByteEntry() {
-	    return new ByteEntry(this.upperByte);
+	    return new ByteEntry(this.upperByte, this.lineNumber);
 	  }
 	}
 	WordEntry.prototype.toString = function () {
@@ -33350,7 +33483,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    code.forEach((line, lineNumber) => {
 	      line = removeComments(line);
 	      line = trimLine(line);
-	      this.codeLines.push(new CodeLine(line, lineNumber+1));
+	      this.codeLines.push(new CodeLine(line, lineNumber + 1));
 	    });
 	    return this;
 
@@ -33366,7 +33499,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  scanLabels() {
-	    this.codeLines.forEach(codeLine => {
+	    this.codeLines.forEach((codeLine) => {
 	      codeLine.scanLabel(this.labelAddresses);
 	    });
 	    this.labelAddresses.printLabelCount();
@@ -33375,20 +33508,21 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	  compile() {
 	    let lineBeforeThisWasAddressOnly = false;
-	    this.codeLines.forEach(codeLine => {
+	    this.codeLines.forEach((codeLine) => {
 	      let codeLen = codeLine.compileLine({
-	        memory : this.memory,
-	        lineBeforeThisWasAddressOnly : lineBeforeThisWasAddressOnly
+	        memory: this.memory,
+	        lineBeforeThisWasAddressOnly: lineBeforeThisWasAddressOnly,
 	      });
-	      if (codeLen >= 0)  {
+	      if (codeLen >= 0) {
 	        this.codeLen += codeLen;
 	        lineBeforeThisWasAddressOnly = false;
-	      } else { // do not count, if there was a line with only an address directly before this line
+	      } else {
+	        // do not count, if there was a line with only an address directly before this line
 	        lineBeforeThisWasAddressOnly = true;
 	      }
 	    });
 	    // insert 0x00 at largest used memory address to mark end of memory
-	    this.memory.writeByte(0xa28, new ByteEntry(0x00));
+	    this.memory.writeByte(0xa28, new ByteEntry(0x00, -1));
 
 	    return this;
 	  }
@@ -33397,7 +33531,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    if (this.noCode()) {
 	      return this;
 	    }
-	    for( let codePC = 0x600; codePC < 0xa28; codePC++ ) {
+	    for (let codePC = 0x600; codePC < 0xa28; codePC++) {
 	      this.labelAddresses.insertToMemory(codePC, this.memory);
 	    }
 
@@ -33405,7 +33539,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  noCode() {
-	    if (this.codeLen == 0) {
+	    if (this.codeLines.every((v) => v.noCode() === true)) {
 	      return true;
 	    }
 	    return false;
@@ -33413,26 +33547,29 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 
 	class CodeLine {
-	  constructor(content, number){
+	  constructor(content, number) {
 	    this.content = content;
 	    this.number = number;
 	    this.labelAddresses;
 	    this.regExp = {
-	      addressOnly : /^\*[\s]*=[\s]*([\$]?[0-9a-f]*)$/,
+	      addressOnly: /^\*[\s]*=[\s]*([\$]?[0-9a-f]*)$/,
 	      label: /^(\w+):.*$/,
-	      commandWithLeadLabel : /^\w+:\s*(\w+)\s*.*$/,
-	      command : /^(\w\w\w)\s*.*$/,
-	      paramWithLeadLabel : /^\w+:\s*\w+\s+(.*?)/,
-	      param : /^\w\w\w+\s+(.*?)/,
+	      commandWithLeadLabel: /^\w+:\s*(\w+)\s*.*$/,
+	      command: /^(\w\w\w)\s*.*$/,
+	      paramWithLeadLabel: /^\w+:\s*\w+\s+(.*?)/,
+	      param: /^\w\w\w+\s+(.*?)/,
 	    };
 	  }
 
 	  scanLabel(labelAddresses) {
 	    this.labelAddresses = labelAddresses;
 	    if (this.#isLabel()) {
-	      if ( this.label in this.labelAddresses ) {
+	      if (this.label in this.labelAddresses) {
 	        let defLineNumber = this.labelAddresses[this.label].lineNumber;
-	        raiseLabelError(codeLine.number, "Label '" + this.label + "' already defined at line " + defLineNumber);
+	        raiseLabelError(
+	          codeLine.number,
+	          "Label '" + this.label + "' already defined at line " + defLineNumber
+	        );
 	        return;
 	      }
 	      // Use label as Address provisionaly => will be read correctly later!
@@ -33441,7 +33578,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return;
 	  }
 
-	  compileLine({memory, lineBeforeThisWasAddressOnly = false}={}) {
+	  compileLine({ memory, lineBeforeThisWasAddressOnly = false } = {}) {
 	    if (this.#isBlank()) {
 	      return 0;
 	    }
@@ -33450,33 +33587,34 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      return -1; // to set lineBeforeThisWasAddressOnly
 	    }
 	    if (this.#isLabel()) {
-	      this.labelAddresses[this.label] = new LabelAddress(memory.defaultCodePC, this.number);
-	      if (! this.#isCommandWithLeadLabel()) {
+	      this.labelAddresses[this.label] = new LabelAddress(
+	        memory.defaultCodePC,
+	        this.number
+	      );
+	      if (!this.#isCommandWithLeadLabel()) {
 	        return 0; //lineLen = 0 and return here since labels might be recognized as commands
 	      }
 	    }
 
 	    let commandName = this.commandName;
-	    if( commandName == "" ) {
+	    if (commandName == "") {
 	      return 0; // lineLen = 0
 	    }
 
-	    if (commandName in Command$1.opCodes) {
-	      let command = new Command$1(commandName, this.number);
-	      // let param = new Param(this.paramName, this.number, this.labelAddresses, commandName);
-
+	    if (commandName in Command.opCodes) {
+	      let command = new Command(commandName, this.number);
 
 	      let param = new ParamFactory().create({
-	        name : this.paramName,
-	        lineNumber : this.number,
-	        labelAddresses : this.labelAddresses,
-	        commandName : commandName,
-	        memory : memory
+	        name: this.paramName,
+	        lineNumber: this.number,
+	        labelAddresses: this.labelAddresses,
+	        commandName: commandName,
+	        memory: memory,
 	      });
 
 	      return command.compileOpCode(param, memory, lineBeforeThisWasAddressOnly);
 	    }
-	    raiseSyntaxError(this.number, "Command \'" + command.name + "\' undefined");
+	    raiseSyntaxError(this.number, "Command '" + command.name + "' undefined");
 	    return 0;
 	  }
 	  get address() {
@@ -33491,23 +33629,38 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    let lineContent = this.content;
 	    let commandName = "";
 	    if (lineContent.match(this.regExp.commandWithLeadLabel)) {
-	      commandName = this.#extract(this.regExp.commandWithLeadLabel).toUpperCase();
+	      commandName = this.#extract(
+	        this.regExp.commandWithLeadLabel
+	      ).toUpperCase();
 	    } else if (lineContent.match(this.regExp.command)) {
 	      commandName = this.#extract(this.regExp.command).toUpperCase();
 	    } else {
-	      raiseSyntaxError(this.number, "Command in line \'" + this.content + "\' undefined");
+	      raiseSyntaxError(
+	        this.number,
+	        "Command in line '" + this.content + "' undefined"
+	      );
 	    }
 	    return commandName;
 	  }
 	  get paramName() {
 	    let lineContent = this.content;
 	    let paramName = "";
-	    if( lineContent.match(this.regExp.paramWithLeadLabel ) ) {
-	      paramName = this.#extract(this.regExp.paramWithLeadLabel).replace( /[ ]/g, "" );
-	    } else if( lineContent.match(this.regExp.param ) ) {
-	      paramName = this.#extract(this.regExp.param).replace( /[ ]/g, "" );
+	    if (lineContent.match(this.regExp.paramWithLeadLabel)) {
+	      paramName = this.#extract(this.regExp.paramWithLeadLabel).replace(
+	        /[ ]/g,
+	        ""
+	      );
+	    } else if (lineContent.match(this.regExp.param)) {
+	      paramName = this.#extract(this.regExp.param).replace(/[ ]/g, "");
+	    }
+	    return paramName;
 	  }
-	  return paramName;
+
+	  noCode() {
+	    if (this.content === "") {
+	      return true;
+	    }
+	    return false;
 	  }
 
 	  #isBlank() {
@@ -33534,43 +33687,45 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	    return false;
 	  }
-	  #extract (regExp) {
-	    return this.content.replace(regExp, "$1" );
+	  #extract(regExp) {
+	    return this.content.replace(regExp, "$1");
 	  }
 	  #addrToHexOrDec(addr) {
-	    if( addr[0] == "$" ) {
-	      addr = addr.replace(/^\$/, "" );  //strip leading dollar sign
-	      addr = parseInt( addr, 16 );
+	    if (addr[0] == "$") {
+	      addr = addr.replace(/^\$/, ""); //strip leading dollar sign
+	      addr = parseInt(addr, 16);
 	    } else {
-	      addr = parseInt( addr, 10 );
-	  }
-	  this.#validateAddress(addr);
+	      addr = parseInt(addr, 10);
+	    }
+	    this.#validateAddress(addr);
 	    return addr;
 	  }
 	  #validateAddress(addr) {
-	    if( addr < 0x0 || addr > 0xffff ) {
-	      raiseRangeError("Address '" + addr + "' out of range(" + 0x0 + ", " + 0xfff + ")" );
+	    if (addr < 0x0 || addr > 0xffff) {
+	      raiseRangeError(
+	        "Address '" + addr + "' out of range(" + 0x0 + ", " + 0xfff + ")"
+	      );
 	    }
 	    return;
 	  }
 	}
-	CodeLine.prototype.toString = function() {
+	CodeLine.prototype.toString = function () {
 	  return "line " + this.number + ": " + this.content;
 	};
 
-	class LabelAddresses{
-	  printLabelCount () {
+	class LabelAddresses {
+	  printLabelCount() {
 	    let labelAddressesCount = Object.entries(this).length;
 	    let str = "Found " + labelAddressesCount + " label";
-	    str = labelAddressesCount == 1 ? str += "." : str += "s.";
+	    str = labelAddressesCount == 1 ? (str += ".") : (str += "s.");
 	    printMessage(str);
 	  }
-	  isLabel (byte) {
-
-	    if ((typeof byte == "string") && ["<", ">"].includes(byte.slice(0,1))) { //high-low-label
+	  isLabel(byte) {
+	    if (typeof byte == "string" && ["<", ">"].includes(byte.slice(0, 1))) {
+	      //high-low-label
 	      byte = byte.slice(1);
 	    }
-	    if ( byte in this ) {
+	    if (byte in this) {
 	      return true;
 	    }
 	    return false;
@@ -33588,176 +33743,218 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  insertToMemory(codePC, memory) {
 	    let memoryEntry = memory.readByte(codePC);
 
-	    if (! (memoryEntry instanceof LabelEntry)) {
+	    if (!(memoryEntry instanceof LabelEntry)) {
 	      return;
 	    }
 
 	    let label = memoryEntry.value;
 
 	    let highLowMark = "";
-	    if (["<", ">"].includes(label.slice(0,1))) { //high-low-label
-	      highLowMark = label.slice(0,1);
+	    if (["<", ">"].includes(label.slice(0, 1))) {
+	      //high-low-label
+	      highLowMark = label.slice(0, 1);
 	      label = label.slice(1);
 	    }
 
-	    let labelAddressWord = this[label].word;
-	    if ( label === labelAddressWord ) {
+	    let labelAddress = this[label];
+	    let labelAddressWord = labelAddress.word;
+	    let lineNumber = memory.readByte(codePC).lineNumber;
+	    if (label === labelAddressWord) {
 	      throw "Call insertLabelAddresses() only after calling scanLabels() and compileLines()!";
 	    }
 
 	    let opCode = memory.readByte(codePC - 1).value;
-	    if (Command$1.isBranchInstruction(opCode)) {
-	      this.#insertForBranch(codePC, labelAddressWord, memory);
+	    if (Command.isBranchInstruction(opCode)) {
+	      this.#insertForBranch(codePC, labelAddressWord, lineNumber, memory);
 	    } else if (highLowMark == "<") {
-	      memory.writeByte(codePC, new WordEntry(labelAddressWord).lowerByteEntry);
+	      memory.writeByte(
+	        codePC,
+	        new WordEntry(labelAddressWord, lineNumber).lowerByteEntry
+	      );
 	    } else if (highLowMark == ">") {
-	      memory.writeByte(codePC, new WordEntry(labelAddressWord).upperByteEntry);
-	    } else { // is absolute opCode
-	      memory.writeWord(codePC, new WordEntry(labelAddressWord));
+	      memory.writeByte(
+	        codePC,
+	        new WordEntry(labelAddressWord, lineNumber).upperByteEntry
+	      );
+	    } else {
+	      // is absolute opCod
+	      memory.writeWord(codePC, new WordEntry(labelAddressWord, lineNumber));
 	    }
 	    return;
 	  }
 
-	  #insertForBranch (codePC, labelAddress, memory) {
+	  #insertForBranch(codePC, labelAddress, labelAddressLineNumber, memory) {
 	    let offsetAddressWord;
-	    if(labelAddress < (codePC - 0x600)) {  // Backwards
-	      offsetAddressWord = 0xff - ((codePC - 0x600) - labelAddress);
+	    if (labelAddress < codePC - 0x600) {
+	      // Backwards
+	      offsetAddressWord = 0xff - (codePC - 0x600 - labelAddress);
 	    }
-	    if (labelAddress >= (codePC - 0x600)) {
-	      offsetAddressWord = labelAddress-(codePC - 0x600) - 0x1;
+	    if (labelAddress >= codePC - 0x600) {
+	      offsetAddressWord = labelAddress - (codePC - 0x600) - 0x1;
 	    }
-	    memory.writeByte(codePC, new WordEntry(offsetAddressWord).lowerByteEntry);
+	    memory.writeByte(
+	      codePC,
+	      new WordEntry(offsetAddressWord, labelAddressLineNumber).lowerByteEntry
+	    );
 	    return;
 	  }
 	}
-	LabelAddresses.prototype.toString = function() {
+	LabelAddresses.prototype.toString = function () {
 	  Object.entries(this).forEach(([label, labelAddress]) => {
-	    console.log(label + " : " + labelAddress.toString() + "\n" );
+	    console.log(label + " : " + labelAddress.toString() + "\n");
 	  });
 	};
 
 	class LabelAddress {
-	  constructor(word, lineNumber){
+	  constructor(word, lineNumber) {
 	    this.word = word;
 	    this.lineNumber = lineNumber;
 	  }
 	}
-	LabelAddress.prototype.toString = function() {
-	  return "line " + this.lineNumber + ": 0x" + this.word.toString(16).padStart(4, 0);
+	LabelAddress.prototype.toString = function () {
+	  return (
+	    "line " + this.lineNumber + ": 0x" + this.word.toString(16).padStart(4, 0)
+	  );
 	};
 
-	class Command$1 {
+	class Command {
 	  static opCodes = {
 	    // NoAd means, command can be called without param
-	    //Name  NoAd  Imm   ZP    ZPX   ZPY   ABS   ABSX  ABSY  INDX  INDY  BRA
-	    ADC : [0x00, 0x69, 0x65, 0x75, 0x00, 0x6d, 0x7d, 0x79, 0x61, 0x71, 0x00],
-	    AND : [0x00, 0x29, 0x25, 0x35, 0x00, 0x2d, 0x3d, 0x39, 0x21, 0x31, 0x00],
-	    ASL : [0x0a, 0x00, 0x06, 0x16, 0x00, 0x0e, 0x1e, 0x00, 0x00, 0x00, 0x00],
-	    BCC : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x90],
-	    BCS : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb0],
-	    BEQ : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0],
-	    BIT : [0x00, 0x00, 0x24, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    BMI : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30],
-	    BNE : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd0],
-	    BPL : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10],
-	    BRK : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    BVC : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50],
-	    BVS : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70],
-	    CLC : [0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CLD : [0xd8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CLI : [0x58, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CLV : [0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CMP : [0x00, 0xc9, 0xc5, 0xd5, 0x00, 0xcd, 0xdd, 0xd9, 0xc1, 0xd1, 0x00],
-	    CPX : [0x00, 0xe0, 0xe4, 0x00, 0x00, 0xec, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CPY : [0x00, 0xc0, 0xc4, 0x00, 0x00, 0xcc, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    DEC : [0x00, 0x00, 0xc6, 0xd6, 0x00, 0xce, 0xde, 0x00, 0x00, 0x00, 0x00],
-	    DEX : [0xca, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    DEY : [0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    EOR : [0x00, 0x49, 0x45, 0x55, 0x00, 0x4d, 0x5d, 0x59, 0x41, 0x51, 0x00],
-	    INC : [0x00, 0x00, 0xe6, 0xf6, 0x00, 0xee, 0xfe, 0x00, 0x00, 0x00, 0x00],
-	    INX : [0xe8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    INY : [0xc8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    JMP : [0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    JSR : [0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    LDA : [0x00, 0xa9, 0xa5, 0xb5, 0x00, 0xad, 0xbd, 0xb9, 0xa1, 0xb1, 0x00],
-	    LDX : [0x00, 0xa2, 0xa6, 0x00, 0xb6, 0xae, 0x00, 0xbe, 0x00, 0x00, 0x00],
-	    LDY : [0x00, 0xa0, 0xa4, 0xb4, 0x00, 0xac, 0xbc, 0x00, 0x00, 0x00, 0x00],
-	    LSR : [0x4a, 0x00, 0x46, 0x56, 0x00, 0x4e, 0x5e, 0x00, 0x00, 0x00, 0x00],
-	    NOP : [0xea, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    ORA : [0x00, 0x09, 0x05, 0x15, 0x00, 0x0d, 0x1d, 0x19, 0x01, 0x11, 0x00],
-	    PHA : [0x48, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    PHP : [0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    PLA : [0x68, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    PLP : [0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    ROL : [0x2a, 0x00, 0x26, 0x36, 0x00, 0x2e, 0x3e, 0x00, 0x00, 0x00, 0x00],
-	    ROR : [0x6a, 0x00, 0x66, 0x76, 0x00, 0x6e, 0x7e, 0x00, 0x00, 0x00, 0x00],
-	    RTI : [0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    RTS : [0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    SBC : [0x00, 0xe9, 0xe5, 0xf5, 0x00, 0xed, 0xfd, 0xf9, 0xe1, 0xf1, 0x00],
-	    SEC : [0x38, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    SED : [0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    SEI : [0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    STA : [0x00, 0x00, 0x85, 0x95, 0x00, 0x8d, 0x9d, 0x99, 0x81, 0x91, 0x00],
-	    STX : [0x00, 0x00, 0x86, 0x00, 0x96, 0x8e, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    STY : [0x00, 0x00, 0x84, 0x94, 0x00, 0x8c, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TAX : [0xaa, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TAY : [0xa8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TSX : [0xba, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TXA : [0x8a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TXS : [0x9a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TYA : [0x98, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    DCB : [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	  }
+	    //Name  NoAd  Imm   ZP   ZPX   ZPY   ABS  ABSI  ABSX  ABSY  INDX  INDY  BRA
+	    ADC: [0x00, 0x69, 0x65, 0x75, 0x00, 0x6d, 0x00, 0x7d, 0x79, 0x61, 0x71, 0x00],
+	    AND: [0x00, 0x29, 0x25, 0x35, 0x00, 0x2d, 0x00, 0x3d, 0x39, 0x21, 0x31, 0x00],
+	    ASL: [0x0a, 0x00, 0x06, 0x16, 0x00, 0x0e, 0x00, 0x1e, 0x00, 0x00, 0x00, 0x00],
+	    BCC: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x90],
+	    BCS: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb0],
+	    BEQ: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0],
+	    BIT: [0x00, 0x00, 0x24, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    BMI: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30],
+	    BNE: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd0],
+	    BPL: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10],
+	    BRK: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    BVC: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50],
+	    BVS: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70],
+	    CLC: [0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    CLD: [0xd8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    CLI: [0x58, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    CLV: [0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    CMP: [0x00, 0xc9, 0xc5, 0xd5, 0x00, 0xcd, 0x00, 0xdd, 0xd9, 0xc1, 0xd1, 0x00],
+	    CPX: [0x00, 0xe0, 0xe4, 0x00, 0x00, 0xec, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    CPY: [0x00, 0xc0, 0xc4, 0x00, 0x00, 0xcc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    DEC: [0x00, 0x00, 0xc6, 0xd6, 0x00, 0xce, 0x00, 0xde, 0x00, 0x00, 0x00, 0x00],
+	    DEX: [0xca, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    DEY: [0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    EOR: [0x00, 0x49, 0x45, 0x55, 0x00, 0x4d, 0x00, 0x5d, 0x59, 0x41, 0x51, 0x00],
+	    INC: [0x00, 0x00, 0xe6, 0xf6, 0x00, 0xee, 0x00, 0xfe, 0x00, 0x00, 0x00, 0x00],
+	    INX: [0xe8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    INY: [0xc8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    JMP: [0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x6c, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    JSR: [0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    LDA: [0x00, 0xa9, 0xa5, 0xb5, 0x00, 0xad, 0x00, 0xbd, 0xb9, 0xa1, 0xb1, 0x00],
+	    LDX: [0x00, 0xa2, 0xa6, 0x00, 0xb6, 0xae, 0x00, 0x00, 0xbe, 0x00, 0x00, 0x00],
+	    LDY: [0x00, 0xa0, 0xa4, 0xb4, 0x00, 0xac, 0x00, 0xbc, 0x00, 0x00, 0x00, 0x00],
+	    LSR: [0x4a, 0x00, 0x46, 0x56, 0x00, 0x4e, 0x00, 0x5e, 0x00, 0x00, 0x00, 0x00],
+	    NOP: [0xea, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    ORA: [0x00, 0x09, 0x05, 0x15, 0x00, 0x0d, 0x00, 0x1d, 0x19, 0x01, 0x11, 0x00],
+	    PHA: [0x48, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    PHP: [0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    PLA: [0x68, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    PLP: [0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    ROL: [0x2a, 0x00, 0x26, 0x36, 0x00, 0x2e, 0x00, 0x3e, 0x00, 0x00, 0x00, 0x00],
+	    ROR: [0x6a, 0x00, 0x66, 0x76, 0x00, 0x6e, 0x00, 0x7e, 0x00, 0x00, 0x00, 0x00],
+	    RTI: [0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    RTS: [0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    SBC: [0x00, 0xe9, 0xe5, 0xf5, 0x00, 0xed, 0x00, 0xfd, 0xf9, 0xe1, 0xf1, 0x00],
+	    SEC: [0x38, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    SED: [0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    SEI: [0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    STA: [0x00, 0x00, 0x85, 0x95, 0x00, 0x8d, 0x00, 0x9d, 0x99, 0x81, 0x91, 0x00],
+	    STX: [0x00, 0x00, 0x86, 0x00, 0x96, 0x8e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    STY: [0x00, 0x00, 0x84, 0x94, 0x00, 0x8c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    TAX: [0xaa, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    TAY: [0xa8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    TSX: [0xba, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    TXA: [0x8a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    TXS: [0x9a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    TYA: [0x98, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+	    DCB: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+
+	    // illegal
+	    // NOP, addressing mode has no significace, only timing
+	    // NOP : [0x1a, 0x3a, 0x5a, 0x7a, 0xda, 0xfb],
+	    // Double NOP, addressing mode has no significace, only timing
+	    // DOP : [0x04, 0x14, 0x34, 0x44, 0x54, 0x64, 0x74, 0x80, 0x82, 0x89, 0xc2, 0xd4, 0xe2, 0xf4],
+	    // Tripple NOP, addressing mode has no significace, only timing
+	    // TOP : [0x0c, 0x1c, 0x3c, 0x5c, 0x7c, 0xdc, 0xfc],
+	    // KIL, stop programm counter (processor lock up)
+	    // KIL : [0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x92, 0xb2, 0xd2, 0xf2],
+	  };
 	  static getOpCodeName(opCode) {
-	    let opCodeName = "";
-	    Object.entries(Command$1.opCodes).forEach(([name, opCodes]) => {
-	      if (opCode != 0x00 && opCodes.find(opCodeV => opCodeV == opCode)) {
-	         opCodeName = name;
+	    let opCodeName = fmtToHex(opCode);
+	    Object.entries(Command.opCodes).forEach(([name, opCodes]) => {
+	      if (opCode != 0x00 && opCodes.find((opCodeV) => opCodeV == opCode)) {
+	        opCodeName = name;
 	      }
 	    });
 	    return opCodeName;
 	  }
 	  static isBranchInstruction(opCode) {
-	    let branchOpCodes = new Array(0x10, 0x30, 0x50, 0x70, 0x90, 0xb0, 0xd0, 0xf0);
+	    let branchOpCodes = new Array(
+	      0x10,
+	      0x30,
+	      0x50,
+	      0x70,
+	      0x90,
+	      0xb0,
+	      0xd0,
+	      0xf0
+	    );
 	    if (branchOpCodes.includes(opCode)) {
 	      return true;
 	    }
 	    return false;
 	  }
 	  static isJumpInstruction(opCode) {
-	    if (opCode == 0x4c) {
+	    if (opCode == 0x4c || opCode == 0x6c) {
 	      return true;
 	    }
 	    return false;
 	  }
 	  constructor(commandName, lineNumber) {
-	    this.name = commandName,
-	    this.lineNumber = lineNumber;
+	    (this.name = commandName), (this.lineNumber = lineNumber);
 	    this.opCode = 0x00;
-	    this.noParam = Command$1.opCodes[this.name][0];
-	    this.immediate = Command$1.opCodes[this.name][1];
-	    this.zeroPage = Command$1.opCodes[this.name][2];
-	    this.zeroPageX = Command$1.opCodes[this.name][3];
-	    this.zeroPageY = Command$1.opCodes[this.name][4];
-	    this.absolute = Command$1.opCodes[this.name][5];
-	    this.absoluteX = Command$1.opCodes[this.name][6];
-	    this.absoluteY = Command$1.opCodes[this.name][7];
-	    this.indirectX = Command$1.opCodes[this.name][8];
-	    this.indirectY = Command$1.opCodes[this.name][9];
-	    this.branch = Command$1.opCodes[this.name][10];
+	    this.noParam = Command.opCodes[this.name][0];
+	    this.immediate = Command.opCodes[this.name][1];
+	    this.zeroPage = Command.opCodes[this.name][2];
+	    this.zeroPageX = Command.opCodes[this.name][3];
+	    this.zeroPageY = Command.opCodes[this.name][4];
+	    this.absolute = Command.opCodes[this.name][5];
+	    this.absoluteIndirect = Command.opCodes[this.name][6];
+	    this.absoluteX = Command.opCodes[this.name][7];
+	    this.absoluteY = Command.opCodes[this.name][8];
+	    this.indirectX = Command.opCodes[this.name][9];
+	    this.indirectY = Command.opCodes[this.name][10];
+	    this.branch = Command.opCodes[this.name][11];
 	  }
 
 	  compileOpCode(param, memory, lineBeforeThisWasAddressOnly) {
 	    if (this.name == "DCB") {
 	      let countParam = param.compileDcb();
-	      if (! lineBeforeThisWasAddressOnly) {
+	      if (!lineBeforeThisWasAddressOnly) {
 	        return 0;
 	      }
 	      return countParam;
 	    }
 	    this.opCode = this[param.addrModeName];
-	    if( this.opCode == 0x00 && this.name != "BRK") {
-	      raiseError(this.lineNumber, "OpCode for command " + this.name + " with addrMode " + param.addrModeName + " unset");
+	    if (this.opCode == 0x00 && this.name != "BRK") {
+	      raiseAddressingModeError(
+	        this.lineNumber,
+	        "OpCode for command " +
+	          this.name +
+	          " with addrMode " +
+	          param.addrModeName +
+	          " unset"
+	      );
 	    }
 
 	    let countPushedOpCodes = this.#pushOpCode(memory);
@@ -33765,66 +33962,77 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return countPushedOpCodes;
 	  }
 
-	  #pushOpCode (memory) {
+	  #pushOpCode(memory) {
 	    memory.pushByte(new OpCodeByteEntry(this.opCode, this.lineNumber));
 	    return 1; // for lineLen/codeLen
 	  }
 	}
-	Command$1.prototype.toString = function() {
+	Command.prototype.toString = function () {
 	  let str = "OpCode\n";
-	  Object.entries(this).forEach(([k,v]) => {str += ("  " + k + ": " + v);});
+	  Object.entries(this).forEach(([k, v]) => {
+	    str += "  " + k + ": " + v;
+	  });
 	  return str;
 	};
 
 	class Param {
 	  static regExps = {
-	    label : /^\w+/,
-	    immediateHexNo : /^#\$([0-9a-f]{1,2})/,
-	    immediateDecNo : /^#([0-9]{1,3})/,
-	    highLowLabel : /^#[<>]\w+/,
-	    zeroPageHexNo : /^\$([0-9a-f]{1,2})/,
-	    zeroPageDecNo : /^([0-9]{1,3})/,
-	    absoluteHexNo : /^\$([0-9a-f]{3,4})/,
-	    absoluteDecNo : /^([0-9]{1,5})/, // Todo: Why not only length of 4,5?
-	    indirectHexNo : /^\(\$([0-9a-f]{1,2}).*/
+	    label: /^\w+/,
+	    labelIndirect: /^\(\w+\)/,
+	    immediateHexNo: /^#\$([0-9a-f]{1,2})/,
+	    immediateDecNo: /^#([0-9]{1,3})/,
+	    highLowLabel: /^#[<>]\w+/,
+	    zeroPageHexNo: /^\$([0-9a-f]{1,2})/,
+	    zeroPageDecNo: /^([0-9]{1,3})/,
+	    absoluteHexNo: /^\$([0-9a-f]{3,4})/,
+	    absoluteDecNo: /^([0-9]{1,5})/, // Todo: Why not only length of 4,5?
+	    absoluteHexNoIndirect: /^\$\(([0-9a-f]{3,4})\)/,
+	    absoluteDecNoIndirect: /^\(([0-9]{1,5})\)/, // Todo: Why not only length of 4,5?
+	    indirectHexNo: /^\(\$([0-9a-f]{1,2}).*/,
 	  };
-	  constructor({
-	    name,
-	    lineNumber,
-	    labelAddresses,
-	    commandName,
-	    memory,
-	}={}){
+	  constructor({ name, lineNumber, labelAddresses, commandName, memory } = {}) {
 	    this.name = name;
 	    this.lineNumber = lineNumber;
 	    this.labelAddresses = labelAddresses;
 	    this.commandName = commandName;
 	    this.addrModeName = "";
-	    this.push = function (_) {return 0;}; //for lineLen/codeLen
+	    this.push = function (_) {
+	      return 0;
+	    }; //for lineLen/codeLen
 	    this.register = "";
 	    this.memory = memory;
 	  }
-	  isDcb(){
-	    if (this.commandName == "DCB"){
+	  isDcb() {
+	    if (this.commandName == "DCB") {
 	      return true;
 	    }
 	    return false;
 	  }
-	  empty(){
-	    if( this.name == "" ) {
+	  empty() {
+	    if (this.name == "") {
 	      return true;
 	    }
 	    return false;
 	  }
-	  isBranchCommand(){
-	    let branchCommands = new Array("BPL", "BMI", "BVC", "BVS", "BCC", "BCS", "BNE", "BEQ",);
-	    if (branchCommands.includes(this.commandName)) { //is branch command, skip absolute!
+	  isBranchCommand() {
+	    let branchCommands = new Array(
+	      "BPL",
+	      "BMI",
+	      "BVC",
+	      "BVS",
+	      "BCC",
+	      "BCS",
+	      "BNE",
+	      "BEQ"
+	    );
+	    if (branchCommands.includes(this.commandName)) {
+	      //is branch command, skip absolute!
 	      return true;
 	    }
 	    return false;
 	  }
 	  isBranch() {
-	    if( ! this.#isLabel()) {
+	    if (!this.#isLabel()) {
 	      raiseError(this.lineNumber, "Branch opCode must be followed by a value");
 	    }
 	    return true;
@@ -33832,9 +34040,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	  isImmediate() {
 	    if (
-	      (!this.#isImmediateHexNumber())
-	      && (!this.#isImmediateDecNumber())
-	      && (!this.#hasHighLowLabel())
+	      !this.#isImmediateHexNumber() &&
+	      !this.#isImmediateDecNumber() &&
+	      !this.#hasHighLowLabel()
 	    ) {
 	      return false;
 	    }
@@ -33842,8 +34050,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	  isZeroPage(register) {
 	    if (
-	      (! this.#isZeroPageHexNumber(register))
-	      && (! this.#isZeroPageDecNumber(register))
+	      !this.#isZeroPageHexNumber(register) &&
+	      !this.#isZeroPageDecNumber(register)
 	    ) {
 	      return false;
 	    }
@@ -33851,57 +34059,104 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	  isAbsolute(register) {
 	    if (
-	      (! this.#isAbsoluteHexNumber(register))
-	      && (! this.#isAbsoluteDecNumber(register))
-	      && (! this.#isLabel({register : register}))
+	      !this.#isAbsoluteHexNumber(register) &&
+	      !this.#isAbsoluteDecNumber(register) &&
+	      !this.#isLabel({ register: register })
+	    ) {
+	      return false;
+	    }
+	    return true;
+	  }
+	  isAbsoluteIndirect(register) {
+	    if (
+	      !this.#isAbsoluteHexNumberIndirect(register) &&
+	      !this.#isAbsoluteDecNumberIndirect(register) &&
+	      !this.#isLabelIndirect({ register: register })
 	    ) {
 	      return false;
 	    }
 	    return true;
 	  }
 	  isIndirect(register) {
-	    if (!(this.#isIndirectHexNumber(register))) {
+	    if (!this.#isIndirectHexNumber(register)) {
 	      return false;
 	    }
 	    return true;
 	  }
-	  #isLabel({register = ""}={}) {
-	    return this.#matchesRegExp({regExp : Param.regExps.label, register : register});
+	  #isLabel({ register = "" } = {}) {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.label,
+	      register: register,
+	    });
+	  }
+	  #isLabelIndirect({ register = "" } = {}) {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.labelIndirect,
+	      register: register,
+	    });
 	  }
 
 	  #isImmediateHexNumber() {
-	    return this.#matchesRegExp({regExp : Param.regExps.immediateHexNo});
+	    return this.#matchesRegExp({ regExp: Param.regExps.immediateHexNo });
 	  }
 	  #isImmediateDecNumber() {
-	    return this.#matchesRegExp({regExp : Param.regExps.immediateDecNo});
+	    return this.#matchesRegExp({ regExp: Param.regExps.immediateDecNo });
 	  }
 	  #hasHighLowLabel() {
-	    let bool = this.#matchesRegExp({regExp : Param.regExps.highLowLabel});
+	    let bool = this.#matchesRegExp({ regExp: Param.regExps.highLowLabel });
 	    return bool;
 	  }
-	  #isZeroPageHexNumber(register){
-	    return this.#matchesRegExp({regExp : Param.regExps.zeroPageHexNo, register : register});
+	  #isZeroPageHexNumber(register) {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.zeroPageHexNo,
+	      register: register,
+	    });
 	  }
-	  #isZeroPageDecNumber(register){
-	    return this.#matchesRegExp({regExp : Param.regExps.zeroPageDecNo, register : register});
+	  #isZeroPageDecNumber(register) {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.zeroPageDecNo,
+	      register: register,
+	    });
 	  }
 	  #isAbsoluteHexNumber(register) {
-	    return this.#matchesRegExp({regExp : Param.regExps.absoluteHexNo, register : register});
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.absoluteHexNo,
+	      register: register,
+	    });
 	  }
 	  #isAbsoluteDecNumber(register) {
-	    return this.#matchesRegExp({regExp : Param.regExps.absoluteDecNo, register : register});
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.absoluteDecNo,
+	      register: register,
+	    });
+	  }
+	  #isAbsoluteHexNumberIndirect(register) {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.absoluteHexNoIndirect,
+	      register: register,
+	    });
+	  }
+	  #isAbsoluteDecNumberIndirect(register) {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.absoluteDecNoIndirect,
+	      register: register,
+	    });
 	  }
 	  #isIndirectHexNumber(register) {
-	    return this.#matchesRegExp({regExp : Param.regExps.indirectHexNo, register : register, indirect: true});
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.indirectHexNo,
+	      register: register,
+	      indirect: true,
+	    });
 	  }
-	  #matchesRegExp({
-	    regExp = /(?:)/,
-	    register = "",
-	    indirect = false,
-	  }={}) {
-	    let regExpString = this.#handleRegister({register: register, regExp : regExp, indirect : indirect});
+	  #matchesRegExp({ regExp = /(?:)/, register = "", indirect = false } = {}) {
+	    let regExpString = this.#handleRegister({
+	      register: register,
+	      regExp: regExp,
+	      indirect: indirect,
+	    });
 	    regExp = this.#addLineEndCaseInsensitive(regExpString);
-	    if( this.name.match(regExp)) {
+	    if (this.name.match(regExp)) {
 	      return true;
 	    }
 	    return false;
@@ -33910,49 +34165,49 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  // DCB handling
 	  compileDcb() {
 	    let lineLen = 0;
-	    let values = this.name.split( "," );
-	    if( values.length == 0 ) {
+	    let values = this.name.split(",");
+	    if (values.length == 0) {
 	      return 0;
 	    }
 
-	    for( let value of values ) {
+	    for (let value of values) {
 	      lineLen += this.#compileDcbValue(value);
 	    }
 	    return lineLen;
 	  }
 	  #compileDcbValue(value) {
-	    if( value == undefined || value == null || value.length == 0 ) {
+	    if (value == undefined || value == null || value.length == 0) {
 	      raiseDCBValueError(lineNumber, "Unknown: DCB value: " + value);
 	      return 0; // +0 for lineLen
 	    }
 	    let base = 10;
-	    let leadChar = value.substring( 0, 1 );
-	    if(leadChar != "$"  && (leadChar < "0" || leadChar > "9")) {
+	    let leadChar = value.substring(0, 1);
+	    if (leadChar != "$" && (leadChar < "0" || leadChar > "9")) {
 	      raiseDCBValueError(this.lineNumber, "Unknown: DCB value: " + value);
 	      return 1; // +1 for lineLen
 	    }
 	    if (leadChar == "$") {
-	      value = value.replace( /^\$/, "" );  //strip leading dollar sign
+	      value = value.replace(/^\$/, ""); //strip leading dollar sign
 	      base = 16;
 	    }
-	    let byte = parseInt( value, base );
-	    this.memory.pushByte(new ByteEntry(byte));
+	    let byte = parseInt(value, base);
+	    this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
 	    return 1; // +1 for lineLen
 	  }
 
 	  // push Functions
 	  pushForImmediate() {
-	    if( this.#isImmediateHexNumber() ) {
+	    if (this.#isImmediateHexNumber()) {
 	      let byte = extractImmediateHexNumber.bind(this)();
-	      this.memory.pushByte(new ByteEntry(byte));
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
 	      return 1; // for lineLen/codeLen
 	    }
-	    if( this.#isImmediateDecNumber() ) {
+	    if (this.#isImmediateDecNumber()) {
 	      let byte = extractImmediateDecNumber.bind(this)();
-	      this.memory.pushByte(new ByteEntry(byte));
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
 	      return 1; // for lineLen/codeLen
 	    }
-	    if(this.#hasHighLowLabel()) {
+	    if (this.#hasHighLowLabel()) {
 	      let label = extractHighLowLabelAddress.bind(this)();
 	      this.memory.pushByte(new LabelEntry(label, this.lineNumber));
 	      return 1; // for lineLen/codeLen
@@ -33960,152 +34215,248 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    throw "Call this function only if isImmediate() is true!";
 
 	    // helper
-	    function extractImmediateHexNumber(){
-	      return this.#extractNumber({regExp : Param.regExps.immediateHexNo});
+	    function extractImmediateHexNumber() {
+	      return this.#extractNumber({ regExp: Param.regExps.immediateHexNo });
 	    }
-	    function extractImmediateDecNumber(){
-	      return this.#extractNumber({regExp : Param.regExps.immediateDecNo, base: 10, max : 255});
+	    function extractImmediateDecNumber() {
+	      return this.#extractNumber({
+	        regExp: Param.regExps.immediateDecNo,
+	        base: 10,
+	        max: 255,
+	      });
 	    }
 	    function extractHighLowLabelAddress() {
-	      let label = this.name.replace(/^#[<>](\w+)$/, "$1" );
-	      let hilo = this.name.replace(/^#([<>]).*$/, "$1" );
-	      if(!(label in this.labelAddresses) ) {
+	      let label = this.name.replace(/^#[<>](\w+)$/, "$1");
+	      let hilo = this.name.replace(/^#([<>]).*$/, "$1");
+	      if (!(label in this.labelAddresses)) {
 	        throw "Call extractHighLowLabelAddress() only after calling scanLabels() and compileLines()!";
 	      }
-	      return (hilo + this.labelAddresses[label].word);
-
+	      return hilo + this.labelAddresses[label].word;
 	    }
 	  }
 	  pushForZeroPage() {
 	    let register = this.register;
-	    if( this.#isZeroPageHexNumber(register) ) {
+	    if (this.#isZeroPageHexNumber(register)) {
 	      let byte = extractZeroPageHexNumber.bind(this, register)();
-	      this.memory.pushByte(new ByteEntry(byte));
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
 	      return 1; // for lineLen/codeLen
-	   }
-	    if( this.#isZeroPageDecNumber(register) ) {
+	    }
+	    if (this.#isZeroPageDecNumber(register)) {
 	      let byte = extractZeroPageDecNumber.bind(this, register)();
-	      this.memory.pushByte(new ByteEntry(byte));
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
 	      return 1; // for lineLen/codeLen
 	    }
 	    throw "Call this function only if isZeroPage() is true!";
 
 	    // helper
 	    function extractZeroPageHexNumber(register) {
-	      return this.#extractNumber({register: register, regExp : Param.regExps.zeroPageHexNo});
+	      return this.#extractNumber({
+	        register: register,
+	        regExp: Param.regExps.zeroPageHexNo,
+	      });
 	    }
 	    function extractZeroPageDecNumber(register) {
-	      return this.#extractNumber({register: register, regExp : Param.regExps.zeroPageDecNo, base: 10, max : 255});
+	      return this.#extractNumber({
+	        register: register,
+	        regExp: Param.regExps.zeroPageDecNo,
+	        base: 10,
+	        max: 255,
+	      });
 	    }
 	  }
 	  pushForAbsolute() {
 	    let register = this.register;
-	    if(this.#isAbsoluteHexNumber(register)) {
+	    if (this.#isAbsoluteHexNumber(register)) {
 	      let word = extractAbsoluteHexNumber.bind(this, register)();
-	      this.memory.pushWord(new WordEntry(word));
+	      this.memory.pushWord(new WordEntry(word, this.lineNumber));
 	      return 2; // for lineLen/codeLen
 	    }
 
 	    if (this.#isAbsoluteDecNumber(register)) {
 	      let word = extractAbsoluteDecNumber.bind(this, register)();
-	      this.memory.pushWord(new WordEntry(word));
+	      this.memory.pushWord(new WordEntry(word, this.lineNumber));
 	      return 2; // for lineLen/codeLen
 	    }
 
 	    // can only be label now, since this function has to be called only if isAbsolute() is true
 	    let label = extractLabel.bind(this)(register);
 
-	    if(label in this.labelAddresses) {
+	    if (label in this.labelAddresses) {
 	      let labelAddressWord = this.labelAddresses[label].word;
-	      if (labelAddressWord === label) { // labelAddress will be inserted after compileLines()
+	      if (labelAddressWord === label) {
+	        // labelAddress will be inserted after compileLines()
 	        this.memory.pushByte(new LabelEntry(label, this.lineNumber));
 	        this.memory.pushByte(new LabelEntry(label, this.lineNumber));
 	      } else {
-	        this.memory.pushWord(new WordEntry(labelAddressWord));
+	        this.memory.pushWord(new WordEntry(labelAddressWord, this.lineNumber));
 	      }
 	      return 2; // for lineLen/codeLen
 	    }
 
-	    if((!(label in this.labelAddresses))) {
-	      raiseLabelError(this.lineNumber, "Label \'" + label + "\' not existing");
+	    if (!(label in this.labelAddresses)) {
+	      raiseLabelError(this.lineNumber, "Label '" + label + "' not existing");
 	      return 0;
 	    }
 	    throw "Call pushForAbsolute() only if isAbsolute() is true!";
 
 	    // helper
 	    function extractLabel(register) {
-	      return this.name.replace( new RegExp( "\," + register + "\$", "i" ), "" );
+	      if (register == "") {
+	      }
+	      return this.name.replace(new RegExp("," + register + "$", "i"), "");
 	    }
 	    function extractAbsoluteHexNumber(register) {
-
-	      return this.#extractNumber({register: register, regExp : Param.regExps.absoluteHexNo, max : 0xffff});
+	      return this.#extractNumber({
+	        register: register,
+	        regExp: Param.regExps.absoluteHexNo,
+	        max: 0xffff,
+	      });
 	    }
 	    function extractAbsoluteDecNumber(register) {
+	      return this.#extractNumber({
+	        register: register,
+	        regExp: Param.regExps.absoluteDecNo,
+	        base: 10,
+	        max: 65535,
+	      });
+	    }
+	  }
+	  pushForAbsoluteIndirect() {
+	    let register = this.register;
+	    if (this.#isAbsoluteHexNumberIndirect(register)) {
+	      let word = extractAbsoluteHexNumberIndirect.bind(this, register)();
+	      this.memory.pushWord(new WordEntry(word, this.lineNumber));
+	      return 2; // for lineLen/codeLen
+	    }
 
-	      return this.#extractNumber({register: register, regExp : Param.regExps.absoluteDecNo, base: 10, max : 65535});
+	    if (this.#isAbsoluteDecNumberIndirect(register)) {
+	      let word = extractAbsoluteDecNumberIndirect.bind(this, register)();
+	      this.memory.pushWord(new WordEntry(word, this.lineNumber));
+	      return 2; // for lineLen/codeLen
+	    }
+
+	    // can only be label now, since this function has to be called only if isAbsolute() is true
+	    let label = extractLabelIndirect.bind(this)(register);
+
+	    if (label in this.labelAddresses) {
+	      let labelAddressWord = this.labelAddresses[label].word;
+	      if (labelAddressWord === label) {
+	        // labelAddress will be inserted after compileLines()
+	        this.memory.pushByte(new LabelEntry(label, this.lineNumber));
+	        this.memory.pushByte(new LabelEntry(label, this.lineNumber));
+	      } else {
+	        this.memory.pushWord(new WordEntry(labelAddressWord, this.lineNumber));
+	      }
+	      return 2; // for lineLen/codeLen
+	    }
+
+	    if (!(label in this.labelAddresses)) {
+	      raiseLabelError(this.lineNumber, "Label '" + label + "' not existing");
+	      return 0;
+	    }
+	    throw "Call pushForAbsoluteIndirect() only if isAbsoluteIndirect() is true!";
+
+	    // helper
+	    function extractLabelIndirect(register) {
+	      if (register == "") {
+	      }
+	      let label = this.name.replace(/^\(/, "");
+	      label = label.replace(/\)$/, "");
+	      return label;
+	    }
+	    function extractAbsoluteHexNumberIndirect(register) {
+	      return this.#extractNumber({
+	        register: register,
+	        regExp: Param.regExps.absoluteHexNoIndirect,
+	        max: 0xffff,
+	      });
+	    }
+	    function extractAbsoluteDecNumberIndirect(register) {
+	      return this.#extractNumber({
+	        register: register,
+	        regExp: Param.regExps.absoluteDecNoIndirect,
+	        base: 10,
+	        max: 65535,
+	      });
 	    }
 	  }
 	  pushForIndirect() {
 	    let register = this.register;
 	    let byte = extractIndirectHexNumber.bind(this, register)();
-	    this.memory.pushByte(new ByteEntry(byte));
+	    this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
 	    return 1; // for lineLen/codeLen
 
 	    //helper
-	    function extractIndirectHexNumber(register){
-	      return this.#extractNumber({register: register, regExp : Param.regExps.indirectHexNo, indirect : true});
+	    function extractIndirectHexNumber(register) {
+	      return this.#extractNumber({
+	        register: register,
+	        regExp: Param.regExps.indirectHexNo,
+	        indirect: true,
+	      });
 	    }
 	  }
 	  pushForBranch() {
 	    let label = this.name;
 	    if (!(label in this.labelAddresses)) {
-	      raiseLabelError(this.lineNumber, "Label \'" + label + "\' not existing");
+	      raiseLabelError(this.lineNumber, "Label '" + label + "' not existing");
 	      return;
 	    }
 
 	    let labelAddress = this.labelAddresses[label].word;
-	    if (labelAddress === label) { //labelAddress will be inserted after compileLines()
+	    if (labelAddress === label) {
+	      //labelAddress will be inserted after compileLines()
 	      this.memory.pushByte(new LabelEntry(label, this.lineNumber));
 	      return 1; // for lineLen/codeLen
 	    }
-	    if(labelAddress < (this.memory.defaultCodePC-0x600)) {  // Backwards
+	    if (labelAddress < this.memory.defaultCodePC - 0x600) {
+	      // Backwards
 	      console.warn("backwards");
-	      let offsetAddressWord = 0xff - ((this.memory.defaultCodePC-0x600)-labelAddress);
-	      this.memory.pushByte(new WordEntry(offsetAddressWord).lowerByteEntry);
+	      let offsetAddressWord =
+	        0xff - (this.memory.defaultCodePC - 0x600 - labelAddress);
+	      this.memory.pushByte(
+	        new WordEntry(offsetAddressWord, this.lineNumber).lowerByteEntry
+	      );
 	      return 1; // for lineLen/codeLen
 	    }
-	    if (labelAddress >= (this.memory.defaultCodePC-0x600)) {
-	      let offsetAddressWord = (labelAddress-1)-(this.memory.defaultCodePC-0x600);
-	      this.memory.pushByte(new WordEntry(offsetAddressWord).lowerByteEntry);
+	    if (labelAddress >= this.memory.defaultCodePC - 0x600) {
+	      let offsetAddressWord =
+	        labelAddress - 1 - (this.memory.defaultCodePC - 0x600);
+	      this.memory.pushByte(
+	        new WordEntry(offsetAddressWord, this.lineNumber).lowerByteEntry
+	      );
 	      return 1; // for lineLen/codeLen
 	    }
 	    throw "Call pushForBranch() only if isBranch() is true!";
 	  }
-	  #extractNumber({ // called with binding wrapper in pushFor methods
+	  #extractNumber({
+	    // called with binding wrapper in pushFor methods
 	    register = "",
 	    regExp = /(?:)/,
 	    base = 16,
 	    min = 0,
 	    max = 0xff,
 	    indirect = false,
-	  }={}){
-	    let regExpString = this.#handleRegister({register : register, regExp : regExp, indirect : indirect});
+	  } = {}) {
+	    let regExpString = this.#handleRegister({
+	      register: register,
+	      regExp: regExp,
+	      indirect: indirect,
+	    });
 	    regExp = this.#addLineEndCaseInsensitive(regExpString);
-	    let number = this.name.replace(regExp, "$1" );
-	    number = parseInt(number, base );
-	    if( number < min || number > max ) {
-	      raiseRangeError(this.lineNumber, "Value '" + number + "' out of range(" + min + ", " + max + ")" );
+	    let number = this.name.replace(regExp, "$1");
+	    number = parseInt(number, base);
+	    if (number < min || number > max) {
+	      raiseRangeError(
+	        this.lineNumber,
+	        "Value '" + number + "' out of range(" + min + ", " + max + ")"
+	      );
 	    }
 	    return number;
 	  }
-	  #handleRegister({
-	    register = "",
-	    regExp = /(?:)/,
-	    indirect = false
-	  }={}) {
+	  #handleRegister({ register = "", regExp = /(?:)/, indirect = false } = {}) {
 	    let regExpString = regExp.toString();
 	    // strip lead/tail '/' of reg exp representation for string representation
-	    regExpString = regExpString.substring(1, regExpString.length-1);
+	    regExpString = regExpString.substring(1, regExpString.length - 1);
 
 	    if (indirect) {
 	      if (register == "") {
@@ -34113,9 +34464,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        printMessage(errMsg);
 	        throw errMsg;
 	      } else if (register == "X") {
-	        regExpString = regExpString + "," + register + "\\\)";
+	        regExpString = regExpString + "," + register + "\\)";
 	      } else if (register == "Y") {
-	        regExpString = regExpString + "\\\)" + "," + register;
+	        regExpString = regExpString + "\\)" + "," + register;
 	      }
 	      return regExpString;
 	    }
@@ -34126,10 +34477,10 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return regExpString;
 	  }
 	  #addLineEndCaseInsensitive(regExpString) {
-	    return new RegExp(regExpString + "\$", "i");
+	    return new RegExp(regExpString + "$", "i");
 	  }
 	}
-	Param.prototype.toString = function() {
+	Param.prototype.toString = function () {
 	  return "line " + this.lineNumber + ": " + this.name;
 	};
 
@@ -34140,103 +34491,336 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    labelAddresses,
 	    commandName = "",
 	    memory,
-	  }={}) {
-	    let param = new this.param ({
-	      name : name,
-	      lineNumber : lineNumber,
-	      labelAddresses : labelAddresses,
-	      commandName : commandName,
-	      memory : memory,
+	  } = {}) {
+	    let param = new this.param({
+	      name: name,
+	      lineNumber: lineNumber,
+	      labelAddresses: labelAddresses,
+	      commandName: commandName,
+	      memory: memory,
 	    });
 	    let addrModeName = "";
-	    let pushFunction = function (_) {return 0;}; //for lineLen/codeLen
+	    let pushFunction = function (_) {
+	      return 0;
+	    }; //for lineLen/codeLen
 	    let register = "";
 	    if (param.isDcb()) {
 	      return param;
-	    } else if(param.empty()) {
+	    } else if (param.empty()) {
 	      addrModeName = "noParam";
-	    } else if(param.isBranchCommand() && param.isBranch()) {
+	    } else if (param.isBranchCommand() && param.isBranch()) {
 	      addrModeName = "branch";
 	      pushFunction = param.pushForBranch;
-	    } else if(param.isImmediate()) {
+	    } else if (param.isImmediate()) {
 	      addrModeName = "immediate";
 	      pushFunction = param.pushForImmediate;
-	    } else if(param.isZeroPage("")) {
+	    } else if (param.isZeroPage("")) {
 	      addrModeName = "zeroPage";
 	      pushFunction = param.pushForZeroPage;
 	      register = "";
-	    } else if(param.isZeroPage("X")) {
+	    } else if (param.isZeroPage("X")) {
 	      addrModeName = "zeroPageX";
 	      pushFunction = param.pushForZeroPage;
 	      register = "X";
-	    } else if(param.isZeroPage("Y")) {
+	    } else if (param.isZeroPage("Y")) {
 	      addrModeName = "zeroPageY";
 	      pushFunction = param.pushForZeroPage;
 	      register = "Y";
-	    } else if(param.isAbsolute("")) {
+	    } else if (param.isAbsolute("")) {
 	      addrModeName = "absolute";
 	      pushFunction = param.pushForAbsolute;
 	      register = "";
-	    } else if(param.isAbsolute("X")) {
+	    } else if (param.isAbsoluteIndirect("")) {
+	      addrModeName = "absoluteIndirect";
+	      pushFunction = param.pushForAbsoluteIndirect;
+	      register = "";
+	    } else if (param.isAbsolute("X")) {
 	      addrModeName = "absoluteX";
 	      pushFunction = param.pushForAbsolute;
 	      register = "X";
-	    } else if(param.isAbsolute("Y")) {
+	    } else if (param.isAbsolute("Y")) {
 	      addrModeName = "absoluteY";
 	      pushFunction = param.pushForAbsolute;
 	      register = "Y";
-	    } else if(param.isIndirect("X")) {
+	    } else if (param.isIndirect("X")) {
 	      addrModeName = "indirectX";
 	      pushFunction = param.pushForIndirect;
 	      register = "X";
-	    } else if(param.isIndirect("Y")) {
+	    } else if (param.isIndirect("Y")) {
 	      addrModeName = "indirectY";
 	      pushFunction = param.pushForIndirect;
 	      register = "Y";
 	    } else {
-	      raiseAddressingModeError(lineNumber, "Addressing mode of parameter '" + addrModeName + "' unknown");
+	      raiseAddressingModeError(
+	        lineNumber,
+	        "Addressing mode of parameter '" + addrModeName + "' unknown"
+	      );
 	    }
 	    param.addrModeName = addrModeName;
 	    param.push = pushFunction;
 	    param.register = register;
 	    return param;
-	  }
+	  };
 	}
 	ParamFactory.prototype.param = Param;
 
 	var instructions = new Array( // /**/ means legal instruction
-	  i00, /**/ i01, i02,      i03, i04,      i05, /**/ i06, /**/ i07, i08, /**/
-	  i09, /**/ i0a, /**/ i0b,      i0c,      i0d, i0e, /**/ i0f,
-	  i10, /**/ i11, i12,      i13, i14,      i15, /**/ i16, /**/ i17, i18, /**/
-	  i19, /**/ i1a,      i1b,      i1c,      i1d, i1e, /**/ i1f,
-	  i20, /**/ i21, i22,      i23, i24, /**/ i25, /**/ i26, /**/ i27, i28, /**/
-	  i29, /**/ i2a, /**/ i2b,      i2c, /**/ i2d, i2e, /**/ i2f,
-	  i30, /**/ i31, i32,      i33, i34,      i35, /**/ i36, /**/ i37, i38, /**/
-	  i39, /**/ i3a,      i3b,      i3c,      i3d, i3e, /**/ i3f,
-	  i40, /**/ i41, i42,      i43, i44,      i45, /**/ i46, /**/ i47, i48, /**/
-	  i49, /**/ i4a, /**/ i4b,      i4c, /**/ i4d, i4e, /**/ i4f,
-	  i50, /**/ i51, i52,      i53, i54,      i55, /**/ i56, /**/ i57, i58, /**/
-	  i59, /**/ i5a,      i5b, /**/ i5c,      i5d, i5e, /**/ i5f,
-	  i60, /**/ i61, i62,      i63, i64,      i65, /**/ i66, /**/ i67, i68, /**/
-	  i69, /**/ i6a, /**/ i6b,      i6c, /**/ i6d, i6e, /**/ i6f,
-	  i70, /**/ i71, i72,      i73, i74,      i75, /**/ i76, /**/ i77, i78, /**/
-	  i79, /**/ i7a,      i7b,      i7c,      i7d, i7e, /**/ i7f,
-	  i80,      i81, i82,      i83, i84, /**/ i85, /**/ i86, /**/ i87, i88, /**/
-	  i89,      i8a, /**/ i8b,      i8c, /**/ i8d, i8e, /**/ i8f,
-	  i90, /**/ i91, i92,      i93, i94, /**/ i95, /**/ i96, /**/ i97, i98, /**/
-	  i99, /**/ i9a, /**/ i9b,      i9c,      i9d, i9e,      i9f,
-	  ia0, /**/ ia1, ia2, /**/ ia3, ia4, /**/ ia5, /**/ ia6, /**/ ia7, ia8, /**/
-	  ia9, /**/ iaa, /**/ iab,      iac, /**/ iad, iae, /**/ iaf,
-	  ib0, /**/ ib1, ib2,      ib3, ib4, /**/ ib5, /**/ ib6, /**/ ib7, ib8, /**/
-	  ib9, /**/ iba,      ibb,      ibc, /**/ ibd, ibe, /**/ ibf,
-	  ic0, /**/ ic1, ic2,      ic3, ic4, /**/ ic5, /**/ ic6, /**/ ic7, ic8, /**/
-	  ic9, /**/ ica,      icb,      icc, /**/ icd, ice, /**/ icf,
-	  id0, /**/ id1, id2,      id3, id4,      id5, /**/ id6, /**/ id7, id8, /**/
-	  id9, /**/ ida,      idb,      idc,      idd, ide, /**/ idf,
-	  ie0, /**/ ie1, ie2,      ie3, ie4, /**/ ie5, /**/ ie6, /**/ ie7, ie8, /**/
-	  ie9, /**/ iea, /**/ ieb,      iec, /**/ ied, iee, /**/ ief,
-	  if0, /**/ if1, if2,      if3, if4,      if5, /**/ if6, /**/ if7, if8, /**/
-	  if9, /**/ ifa,      ifb, /**/ ifc,      ifd, ife, /**/ iff,
+	  i00,
+	  /**/ i01,
+	  i02,
+	  i03,
+	  i04,
+	  i05,
+	  /**/ i06,
+	  /**/ i07,
+	  i08 /**/,
+	  i09,
+	  /**/ i0a,
+	  /**/ i0b,
+	  i0c,
+	  i0d,
+	  i0e,
+	  /**/ i0f,
+	  i10,
+	  /**/ i11,
+	  i12,
+	  i13,
+	  i14,
+	  i15,
+	  /**/ i16,
+	  /**/ i17,
+	  i18 /**/,
+	  i19,
+	  /**/ i1a,
+	  i1b,
+	  i1c,
+	  i1d,
+	  i1e,
+	  /**/ i1f,
+	  i20,
+	  /**/ i21,
+	  i22,
+	  i23,
+	  i24,
+	  /**/ i25,
+	  /**/ i26,
+	  /**/ i27,
+	  i28 /**/,
+	  i29,
+	  /**/ i2a,
+	  /**/ i2b,
+	  i2c,
+	  /**/ i2d,
+	  i2e,
+	  /**/ i2f,
+	  i30,
+	  /**/ i31,
+	  i32,
+	  i33,
+	  i34,
+	  i35,
+	  /**/ i36,
+	  /**/ i37,
+	  i38 /**/,
+	  i39,
+	  /**/ i3a,
+	  i3b,
+	  i3c,
+	  i3d,
+	  i3e,
+	  /**/ i3f,
+	  i40,
+	  /**/ i41,
+	  i42,
+	  i43,
+	  i44,
+	  i45,
+	  /**/ i46,
+	  /**/ i47,
+	  i48 /**/,
+	  i49,
+	  /**/ i4a,
+	  /**/ i4b,
+	  i4c,
+	  /**/ i4d,
+	  i4e,
+	  /**/ i4f,
+	  i50,
+	  /**/ i51,
+	  i52,
+	  i53,
+	  i54,
+	  i55,
+	  /**/ i56,
+	  /**/ i57,
+	  i58 /**/,
+	  i59,
+	  /**/ i5a,
+	  i5b,
+	  /**/ i5c,
+	  i5d,
+	  i5e,
+	  /**/ i5f,
+	  i60,
+	  /**/ i61,
+	  i62,
+	  i63,
+	  i64,
+	  i65,
+	  /**/ i66,
+	  /**/ i67,
+	  i68 /**/,
+	  i69,
+	  /**/ i6a,
+	  /**/ i6b,
+	  i6c,
+	  /**/ i6d,
+	  i6e,
+	  /**/ i6f,
+	  i70,
+	  /**/ i71,
+	  i72,
+	  i73,
+	  i74,
+	  i75,
+	  /**/ i76,
+	  /**/ i77,
+	  i78 /**/,
+	  i79,
+	  /**/ i7a,
+	  i7b,
+	  i7c,
+	  i7d,
+	  i7e,
+	  /**/ i7f,
+	  i80,
+	  i81,
+	  i82,
+	  i83,
+	  i84,
+	  /**/ i85,
+	  /**/ i86,
+	  /**/ i87,
+	  i88 /**/,
+	  i89,
+	  i8a,
+	  /**/ i8b,
+	  i8c,
+	  /**/ i8d,
+	  i8e,
+	  /**/ i8f,
+	  i90,
+	  /**/ i91,
+	  i92,
+	  i93,
+	  i94,
+	  /**/ i95,
+	  /**/ i96,
+	  /**/ i97,
+	  i98 /**/,
+	  i99,
+	  /**/ i9a,
+	  /**/ i9b,
+	  i9c,
+	  i9d,
+	  i9e,
+	  i9f,
+	  ia0,
+	  /**/ ia1,
+	  ia2,
+	  /**/ ia3,
+	  ia4,
+	  /**/ ia5,
+	  /**/ ia6,
+	  /**/ ia7,
+	  ia8 /**/,
+	  ia9,
+	  /**/ iaa,
+	  /**/ iab,
+	  iac,
+	  /**/ iad,
+	  iae,
+	  /**/ iaf,
+	  ib0,
+	  /**/ ib1,
+	  ib2,
+	  ib3,
+	  ib4,
+	  /**/ ib5,
+	  /**/ ib6,
+	  /**/ ib7,
+	  ib8 /**/,
+	  ib9,
+	  /**/ iba,
+	  ibb,
+	  ibc,
+	  /**/ ibd,
+	  ibe,
+	  /**/ ibf,
+	  ic0,
+	  /**/ ic1,
+	  ic2,
+	  ic3,
+	  ic4,
+	  /**/ ic5,
+	  /**/ ic6,
+	  /**/ ic7,
+	  ic8 /**/,
+	  ic9,
+	  /**/ ica,
+	  icb,
+	  icc,
+	  /**/ icd,
+	  ice,
+	  /**/ icf,
+	  id0,
+	  /**/ id1,
+	  id2,
+	  id3,
+	  id4,
+	  id5,
+	  /**/ id6,
+	  /**/ id7,
+	  id8 /**/,
+	  id9,
+	  /**/ ida,
+	  idb,
+	  idc,
+	  idd,
+	  ide,
+	  /**/ idf,
+	  ie0,
+	  /**/ ie1,
+	  ie2,
+	  ie3,
+	  ie4,
+	  /**/ ie5,
+	  /**/ ie6,
+	  /**/ ie7,
+	  ie8 /**/,
+	  ie9,
+	  /**/ iea,
+	  /**/ ieb,
+	  iec,
+	  /**/ ied,
+	  iee,
+	  /**/ ief,
+	  if0,
+	  /**/ if1,
+	  if2,
+	  if3,
+	  if4,
+	  if5,
+	  /**/ if6,
+	  /**/ if7,
+	  if8 /**/,
+	  if9,
+	  /**/ ifa,
+	  ifb,
+	  /**/ ifc,
+	  ifd,
+	  ife,
+	  /**/ iff
 	);
 
 	// jumping ===================================================================================
@@ -34248,228 +34832,454 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  function pushReturnAddress() {
 	    let addrBeforeNextInstruction = exports.reg.PC + 1;
 	    // exports.reg.PC + 1 because we get a word, i.e., 2 byte in jump()
-		exports.memory.pushWordToStack(new WordEntry(addrBeforeNextInstruction));
+	    exports.memory.pushWordToStack(new WordEntry(addrBeforeNextInstruction));
 	  }
 	}
-	function i4c(name) { jump(name, ""); }
-	function i6c(name) { ierr(name + ": [UNIMPL] jumping with absoluteIndirect addressingMode"); }
+	function i4c(name) {
+	  jump(name, "");
+	}
+	function i6c(name) {
+	  jump(name, "");
+	  // ierr(name + ": [UNIMPL] jumping with absoluteIndirect addressingMode");
+	}
 	function jump(name, msg) {
 	  let addr = exports.memory.readWord(exports.reg.PC).value;
 	  exports.reg.PC = addr; // the actual jump to address
 	  consoleDebug({
-	    msg : name + ": jumping to " + msg + exports.labelAddresses.getLabel(exports.reg.PC) + fmtToHexWordBr(exports.reg.PC),
-	    bold : true,
+	    msg:
+	      name +
+	      ": jumping to " +
+	      msg +
+	      exports.labelAddresses.getLabel(exports.reg.PC) +
+	      fmtToHexWordBr(exports.reg.PC) +
+	      "[lineNo: " +
+	      exports.addressLineNumbers[exports.reg.PC].lineNumber +
+	      "]",
+	    bold: true,
 	  });
 	}
 	// returning ---------------------------------------------------------------------------------
 	function i40(name) {
 	  // this actually should pop PC from stack and pop flags/processor state from stack
-	  consoleDebug({msg : name + ": returning from interrupt", bold : true});
+	  consoleDebug({ msg: name + ": returning from interrupt", bold: true });
 	}
 	function i60(name) {
 	  let returnAddr = exports.memory.popWordFromStack().value;
 	  exports.reg.PC = returnAddr;
 	  consoleDebug({
-	    msg : name + ": returning from subroutine to "
-	    + exports.labelAddresses.getLabel(exports.reg.PC) + fmtToHexWordBr(exports.reg.PC)
+	    msg:
+	      name +
+	      ": returning from subroutine to " +
+	      exports.labelAddresses.getLabel(exports.reg.PC) +
+	      fmtToHexWordBr(exports.reg.PC),
 	  });
 	}
 
 	// branching =================================================================================
-	function i10(name) { jumpBranch({type : "BPL", name : name}); }
-	function i30(name) { jumpBranch({type : "BMI", name : name}); }
-	function i50(name) { jumpBranch({type : "BVC", name : name}); }
-	function i70(name) { jumpBranch({type : "BVS", name : name}); }
-	function i90(name) { jumpBranch({type : "BCC", name : name}); }
-	function ib0(name) { jumpBranch({type : "BCS", name : name}); }
-	function id0(name) { jumpBranch({type : "BNE", name : name}); }
-	function if0(name) { jumpBranch({type : "BEQ", name : name}); }
+	function i10(name) {
+	  jumpBranch({ type: "BPL", name: name });
+	}
+	function i30(name) {
+	  jumpBranch({ type: "BMI", name: name });
+	}
+	function i50(name) {
+	  jumpBranch({ type: "BVC", name: name });
+	}
+	function i70(name) {
+	  jumpBranch({ type: "BVS", name: name });
+	}
+	function i90(name) {
+	  jumpBranch({ type: "BCC", name: name });
+	}
+	function ib0(name) {
+	  jumpBranch({ type: "BCS", name: name });
+	}
+	function id0(name) {
+	  jumpBranch({ type: "BNE", name: name });
+	}
+	function if0(name) {
+	  jumpBranch({ type: "BEQ", name: name });
+	}
 
-	function jumpBranch({type = "", name = ""}={}) {
+	function jumpBranch({ type = "", name = "" } = {}) {
 	  let conditions = {
-	    BCC : exports.flags.carry.isClear(),
-	    BCS : exports.flags.carry.isSet(),
-	    BNE : exports.flags.zero.isClear(),
-	    BEQ : exports.flags.zero.isSet(),
-	    BVC : exports.flags.overflow.isClear(),
-	    BVS : exports.flags.overflow.isSet(),
-	    BPL : exports.flags.negative.isClear(),
-	    BMI : exports.flags.negative.isSet(),
+	    BCC: exports.flags.carry.isClear(),
+	    BCS: exports.flags.carry.isSet(),
+	    BNE: exports.flags.zero.isClear(),
+	    BEQ: exports.flags.zero.isSet(),
+	    BVC: exports.flags.overflow.isClear(),
+	    BVS: exports.flags.overflow.isSet(),
+	    BPL: exports.flags.negative.isClear(),
+	    BMI: exports.flags.negative.isSet(),
 	  };
 
 	  let offset = exports.memory.readByte(exports.reg.PC).value;
 	  exports.reg.PC++; // advance program counter
-	  if (! conditions[type]) {
-	    consoleDebug({msg : name + ": skipping branch, moving on to " + fmtToHexWord(exports.reg.PC)});
+	  if (!conditions[type]) {
+	    consoleDebug({
+	      msg:
+	        name +
+	        ": skipping branch, moving on to " +
+	        fmtToHexWord(exports.reg.PC),
+	    });
 	    return;
 	  }
 
 	  exports.reg.PC = getBranchAddress(offset); // the actual jump means setting the program counter
 	  consoleDebug({
-	    msg : name + ": branching to " + exports.labelAddresses.getLabel(exports.reg.PC) + fmtToHexWordBr(exports.reg.PC),
-	    bold : true,
+	    msg:
+	      name +
+	      ": branching to " +
+	      exports.labelAddresses.getLabel(exports.reg.PC) +
+	      fmtToHexWordBr(exports.reg.PC) +
+	      "[lineNo: " +
+	      exports.addressLineNumbers[exports.reg.PC].lineNumber +
+	      "]",
+	    bold: true,
 	  });
 	  return;
 
 	  function getBranchAddress(offset) {
-	    if( offset > 0x7f ) {//0x7f = 127
-	      return (exports.reg.PC - (0x100 - offset));
+	    if (offset > 0x7f) {
+	      //0x7f = 127
+	      return exports.reg.PC - (0x100 - offset);
 	    }
-	    return (exports.reg.PC + offset );
+	    return exports.reg.PC + offset;
 	  }
 	}
 
 	// INC increment =============================================================================
-	function ie8(name) { increment({name : name, impliedRegister : "X"}); }
-	function ic8(name) { increment({name : name, impliedRegister : "Y"}); }
-	function iee(name) { increment({name : name, addrMode : "absolute"}); }
-	function ife(name) { increment({name : name, addrMode : "absoluteX"}); }
-	function ie6(name) { increment({name : name, addrMode : "zeroPage"}); }
-	function if6(name) { increment({name : name, addrMode : "zeroPageX"}); }
+	function ie8(name) {
+	  increment({ name: name, impliedRegister: "X" });
+	}
+	function ic8(name) {
+	  increment({ name: name, impliedRegister: "Y" });
+	}
+	function iee(name) {
+	  increment({ name: name, addrMode: "absolute" });
+	}
+	function ife(name) {
+	  increment({ name: name, addrMode: "absoluteX" });
+	}
+	function ie6(name) {
+	  increment({ name: name, addrMode: "zeroPage" });
+	}
+	function if6(name) {
+	  increment({ name: name, addrMode: "zeroPageX" });
+	}
 
-	function increment({name = "", addrMode = "", impliedRegister = ""}={}) {
-	  crement({type : "IN", name : name, addrMode : addrMode, impliedRegister : impliedRegister});
+	function increment({
+	  name = "",
+	  addrMode = "",
+	  impliedRegister = "",
+	} = {}) {
+	  crement({
+	    type: "IN",
+	    name: name,
+	    addrMode: addrMode,
+	    impliedRegister: impliedRegister,
+	  });
 	  return;
 	}
 
 	// decrement =================================================================================
-	function ica(name) { decrement({name : name, impliedRegister : "X"}); }
-	function i88(name) { decrement({name : name, impliedRegister : "Y"}); }
-	function ice(name) { decrement({name : name, addrMode : "absolute"}); }
-	function ide(name) { decrement({name : name, addrMode : "absoluteX"}); }
-	function ic6(name) { decrement({name : name, addrMode : "zeroPage"}); }
-	function id6(name) { decrement({name : name, addrMode : "zeroPageX"}); }
+	function ica(name) {
+	  decrement({ name: name, impliedRegister: "X" });
+	}
+	function i88(name) {
+	  decrement({ name: name, impliedRegister: "Y" });
+	}
+	function ice(name) {
+	  decrement({ name: name, addrMode: "absolute" });
+	}
+	function ide(name) {
+	  decrement({ name: name, addrMode: "absoluteX" });
+	}
+	function ic6(name) {
+	  decrement({ name: name, addrMode: "zeroPage" });
+	}
+	function id6(name) {
+	  decrement({ name: name, addrMode: "zeroPageX" });
+	}
 
-	function decrement({name = "", addrMode = "", impliedRegister = ""}={}) {
-	  crement({type : "DE", name : name, addrMode : addrMode, impliedRegister : impliedRegister});
+	function decrement({ name = "", addrMode = "", impliedRegister = "" } = {}) {
+	  crement({
+	    type: "DE",
+	    name: name,
+	    addrMode: addrMode,
+	    impliedRegister: impliedRegister,
+	  });
 	  return;
 	}
 
-	function crement({type = "", name = "", addrMode = "", impliedRegister = "X"}={}) {
+	function crement({
+	  type = "",
+	  name = "",
+	  addrMode = "",
+	  impliedRegister = "X",
+	} = {}) {
 	  let value = exports.reg[impliedRegister];
 	  let valueName = "reg" + impliedRegister;
 	  let addr;
 
-	  if (! ["X", "Y"].includes(impliedRegister)) {
-	    addr = getAddressingModeAddr({addrMode : addrMode});
-	    value = exports.memory.readByte(addr).value;
-	    valueName = fmtToHex$1(value);
+	  if (!["X", "Y"].includes(impliedRegister)) {
+	    addr = getAddressingModeAddr({ addrMode: addrMode });
+	    let byteEntry = exports.memory.readByte(addr);
+	    value = byteEntry.value;
+	    valueName = fmtToHex(addr);
+	    if (addr in exports.addressLineNumbers) {
+	      valueName +=
+	        "[lineNo: " + exports.addressLineNumbers[addr].lineNumber + "]";
+	    }
 	  }
 
 	  let oldValue = value;
 
 	  if (type === "IN") {
 	    value = getLowerByte(++value);
-	  } else {// if (type === "DE")
+	  } else {
+	    // if (type === "DE")
 	    value = getLowerByte(--value);
 	  }
 	  consoleDebug({
-		  msg : name + ": " + type + "crement value at "
-		  + valueName + fmtToHexBr(oldValue)
-		  + " to " + fmtToHex$1(value)
+	    msg:
+	      name +
+	      ": " +
+	      type +
+	      "crement value at " +
+	      valueName +
+	      fmtToHexBr(oldValue) +
+	      " to " +
+	      fmtToHex(value),
 	  });
 
 	  exports.flags.toggleZeroAndNegative(value);
-	  if (impliedRegister === "X") {
-	    exports.reg.X = value;
-	    return;
-	  } else if (impliedRegister === "Y") {
-	    exports.reg.Y = value;
+	  if (["X", "Y"].includes(impliedRegister)) {
+	    exports.reg[impliedRegister] = value;
 	    return;
 	  }
-	  exports.memory.writeByte(addr, new WordEntry(value).lowerByteEntry);
+	  let lineNumber = addr;
+	  if (addr in exports.addressLineNumbers) {
+	    lineNumber = exports.addressLineNumbers[addr];
+	  }
+	  exports.memory.writeByte(
+	    addr,
+	    new WordEntry(value, lineNumber).lowerByteEntry
+	  );
 	  return addr;
 	}
 
 	// CMP: Compare Memory and Accumulator =======================================================
-	function ic9(name) { compare({name : name, addrMode : "immediate"}); }
-	function icd(name) { compare({name : name, addrMode : "absolute"}); }
-	function idd(name) { compare({name : name, addrMode : "absoluteX"}); }
-	function id9(name) { compare({name : name, addrMode : "absoluteY"}); }
-	function ic5(name) { compare({name : name, addrMode : "zeroPage"}); }
-	function id5(name) { compare({name : name, addrMode : "zeroPageX"}); }
-	function ic1(name) { compare({name : name, addrMode : "(zeroPage, X)"}); }
-	function id1(name) { compare({name : name, addrMode : "(zeroPage), Y"}); }
+	function ic9(name) {
+	  compare({ name: name, addrMode: "immediate" });
+	}
+	function icd(name) {
+	  compare({ name: name, addrMode: "absolute" });
+	}
+	function idd(name) {
+	  compare({ name: name, addrMode: "absoluteX" });
+	}
+	function id9(name) {
+	  compare({ name: name, addrMode: "absoluteY" });
+	}
+	function ic5(name) {
+	  compare({ name: name, addrMode: "zeroPage" });
+	}
+	function id5(name) {
+	  compare({ name: name, addrMode: "zeroPageX" });
+	}
+	function ic1(name) {
+	  compare({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function id1(name) {
+	  compare({ name: name, addrMode: "(zeroPage), Y" });
+	}
 	// CMP: Compare Memory and Index X
-	function ie0(name) { compare({name : name, register : "X", addrMode: "immediate"}); }
-	function iec(name) { compare({name : name, register : "X", addrMode: "absolute"}); }
-	function ie4(name) { compare({name : name, register : "X", addrMode: "zeroPage"}); }
+	function ie0(name) {
+	  compare({ name: name, register: "X", addrMode: "immediate" });
+	}
+	function iec(name) {
+	  compare({ name: name, register: "X", addrMode: "absolute" });
+	}
+	function ie4(name) {
+	  compare({ name: name, register: "X", addrMode: "zeroPage" });
+	}
 	// CMP: Compare Memory and Index Y
 	// TODO: Was this old code for ic0 wrong, because its inconsitent?
 	// if( (exports.reg.Y+value) > 0xff ) exports.flags.zero._set(); else exports.flags.zero.clear();
 	// value = (exports.reg.Y-value);
-	function ic0(name) { compare({name : name, register : "Y", addrMode : "immediate"}); }
-	function icc(name) { compare({name : name, register : "Y", addrMode: "absolute"}); }
-	function ic4(name) { compare({name : name, register : "Y", addrMode: "zeroPage"}); }
+	function ic0(name) {
+	  compare({ name: name, register: "Y", addrMode: "immediate" });
+	}
+	function icc(name) {
+	  compare({ name: name, register: "Y", addrMode: "absolute" });
+	}
+	function ic4(name) {
+	  compare({ name: name, register: "Y", addrMode: "zeroPage" });
+	}
 
-	function compare({name = "", register = "A", addrMode = "", onlyLowerByte = false}={}) {
+	function compare({
+	  name = "",
+	  register = "A",
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
 	  let regValue = exports.reg[register];
-	  let addr = getAddressingModeAddr({addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	  let addr = getAddressingModeAddr({
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
 	  let value = exports.memory.readByte(addr).value;
 
 	  consoleDebug({
-	    msg : name + ": compare reg" + register + "=" + fmtToHexBr(regValue)
-	    + " with " + fmtToHex$1(value)
+	    msg:
+	      name +
+	      ": compare reg" +
+	      register +
+	      "=" +
+	      fmtToHexBr(regValue) +
+	      " with " +
+	      fmtToHex(value),
 	  });
 	  let compareResult = compareTest(regValue, value);
 	  exports.flags.toggleZeroAndNegative(compareResult);
 	  return;
 
 	  function compareTest(regValue, value) {
-	    if( regValue >= value ) {  // Thanks, "Guest"
+	    if (regValue >= value) {
+	      // Thanks, "Guest"
 	      exports.flags.zero._set();
 	    } else {
 	      exports.flags.zero.clear();
 	    }
 	    return regValue - value;
 	  }
-
 	}
 	// Logic AND memory with Accumulator==========================================================
-	function i29(name) { and({name : name, addrMode : "immediate"}); }
-	function i2d(name) { and({name : name, addrMode : "absolute"}); }
-	function i3d(name) { and({name : name, addrMode : "absoluteX"}); }
-	function i39(name) { and({name : name, addrMode : "absoluteY"}); }
-	function i25(name) { and({name : name, addrMode : "zeroPage"}); }
-	function i35(name) { and({name : name, addrMode : "zeroPage"}); }
-	function i21(name) { and({name : name, addrMode : "(zeroPage, X)"}); }
-	function i31(name) { and({name : name, addrMode : "(zeroPage), Y"}); }
+	function i29(name) {
+	  and({ name: name, addrMode: "immediate" });
+	}
+	function i2d(name) {
+	  and({ name: name, addrMode: "absolute" });
+	}
+	function i3d(name) {
+	  and({ name: name, addrMode: "absoluteX" });
+	}
+	function i39(name) {
+	  and({ name: name, addrMode: "absoluteY" });
+	}
+	function i25(name) {
+	  and({ name: name, addrMode: "zeroPage" });
+	}
+	function i35(name) {
+	  and({ name: name, addrMode: "zeroPage" });
+	}
+	function i21(name) {
+	  and({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function i31(name) {
+	  and({ name: name, addrMode: "(zeroPage), Y" });
+	}
 
-	function and({name = "", addrMode = "", onlyLowerByte = false}={}) {
-	  logicInstruction({type : "AND", name : name, addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	function and({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
+	  logicInstruction({
+	    type: "AND",
+	    name: name,
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
 	}
 	//Logic Or Memory with Accumulator
-	function i09(name) { or({name : name, addrMode : "immediate"}); }
-	function i0d(name) { or({name : name, addrMode : "absolute"}); }
-	function i1d(name) { or({name : name, addrMode : "absoluteX"}); }
-	function i19(name) { or({name : name, addrMode : "absoluteY"}); }
-	function i05(name) { or({name : name, addrMode : "zeroPage"}); }
-	function i15(name) { or({name : name, addrMode : "zeroPageX"}); }
-	function i01(name) { or({name : name, addrMode : "(zeroPage, X)"}); }
-	function i11(name) { or({name : name, addrMode : "(zeroPage), Y"}); }
+	function i09(name) {
+	  or({ name: name, addrMode: "immediate" });
+	}
+	function i0d(name) {
+	  or({ name: name, addrMode: "absolute" });
+	}
+	function i1d(name) {
+	  or({ name: name, addrMode: "absoluteX" });
+	}
+	function i19(name) {
+	  or({ name: name, addrMode: "absoluteY" });
+	}
+	function i05(name) {
+	  or({ name: name, addrMode: "zeroPage" });
+	}
+	function i15(name) {
+	  or({ name: name, addrMode: "zeroPageX" });
+	}
+	function i01(name) {
+	  or({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function i11(name) {
+	  or({ name: name, addrMode: "(zeroPage), Y" });
+	}
 
-	function or({name = "", addrMode = "", onlyLowerByte = false}={}) {
-	  logicInstruction({type : "ORA", name : name, addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	function or({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
+	  logicInstruction({
+	    type: "ORA",
+	    name: name,
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
 	}
 	// Logic Exclusive-Or memory with accumulator
-	function i49(name) { xor({name : name, addrMode : "immediate"}); }
-	function i4d(name) { xor({name : name, addrMode : "absolute"}); }
-	function i5d(name) { xor({name : name, addrMode : "absoluteX"}); }
-	function i59(name) { xor({name : name, addrMode : "absoluteY"}); }
-	function i45(name) { xor({name : name, addrMode : "zeroPage"}); }
-	function i55(name) { xor({name : name, addrMode : "zeroPageX"}); }
-	function i41(name) { xor({name : name, addrMode : "(zeroPage, X)"}); }
-	function i51(name) { xor({name : name, addrMode : "(zeroPage), Y"}); }
-
-	function xor({name = "", addrMode = "", onlyLowerByte = false}={}) {
-	  logicInstruction({type : "EOR", name : name, addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	function i49(name) {
+	  xor({ name: name, addrMode: "immediate" });
+	}
+	function i4d(name) {
+	  xor({ name: name, addrMode: "absolute" });
+	}
+	function i5d(name) {
+	  xor({ name: name, addrMode: "absoluteX" });
+	}
+	function i59(name) {
+	  xor({ name: name, addrMode: "absoluteY" });
+	}
+	function i45(name) {
+	  xor({ name: name, addrMode: "zeroPage" });
+	}
+	function i55(name) {
+	  xor({ name: name, addrMode: "zeroPageX" });
+	}
+	function i41(name) {
+	  xor({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function i51(name) {
+	  xor({ name: name, addrMode: "(zeroPage), Y" });
 	}
 
-	function logicInstruction({type = "", name = "", addrMode = "", onlyLowerByte = false}={}) {
-	  let addr = getAddressingModeAddr({addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	function xor({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
+	  logicInstruction({
+	    type: "EOR",
+	    name: name,
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
+	}
+
+	function logicInstruction({
+	  type = "",
+	  name = "",
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
+	  let addr = getAddressingModeAddr({
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
 	  let value = exports.memory.readByte(addr).value;
 
-	  consoleDebug({msg : name + ": " + type + " on regA" + fmtToHexBr(exports.reg.A) + " and " + fmtToHex$1(value)});
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": " +
+	      type +
+	      " on regA" +
+	      fmtToHexBr(exports.reg.A) +
+	      " and " +
+	      fmtToHex(value),
+	  });
 	  if (type === "AND") {
 	    value &= exports.reg.A;
 	  } else if (type === "ORA") {
@@ -34483,35 +35293,65 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 	// Shift and Rotate ===========================================================================
 	// arithmetic shift one bit left
-	function i0a(name) { shiftLeft({name : name, accumulator : true}); }
-	function i0e(name) { shiftLeft({name : name, addrMode : "absolute"}); }
-	function i1e(name) { shiftLeft({name : name, addrMode : "absoluteX"}); }
-	function i06(name) { shiftLeft({name : name, addrMode : "zeroPage"}); }
-	function i16(name) { shiftLeft({name : name, addrMode : "zeroPageX"}); }
+	function i0a(name) {
+	  shiftLeft({ name: name, accumulator: true });
+	}
+	function i0e(name) {
+	  shiftLeft({ name: name, addrMode: "absolute" });
+	}
+	function i1e(name) {
+	  shiftLeft({ name: name, addrMode: "absoluteX" });
+	}
+	function i06(name) {
+	  shiftLeft({ name: name, addrMode: "zeroPage" });
+	}
+	function i16(name) {
+	  shiftLeft({ name: name, addrMode: "zeroPageX" });
+	}
 
-	function shiftLeft({name = "", accumulator = false, addrMode = "", onlyLowerByte = false}={}) {
+	function shiftLeft({
+	  name = "",
+	  accumulator = false,
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
 	  shift({
-	    type : "LEFT",
-	    name : name,
-	    accumulator : accumulator,
-	    addrMode : addrMode,
-	    onlyLowerByte : onlyLowerByte
+	    type: "LEFT",
+	    name: name,
+	    accumulator: accumulator,
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
 	  });
 	}
 	//logical shift right one bit
-	function i4a(name) { shiftRight({name : name, accumulator : true}); }
-	function i4e(name) { shiftRight({name : name, addrMode : "absolute"}); }
-	function i5e(name) { shiftRight({name : name, addrMode : "absoluteX"}); }
-	function i46(name) { shiftRight({name : name, addrMode : "zeroPage"}); }
-	function i56(name) { shiftRight({name : name, addrMode : "zeroPageX"}); }
+	function i4a(name) {
+	  shiftRight({ name: name, accumulator: true });
+	}
+	function i4e(name) {
+	  shiftRight({ name: name, addrMode: "absolute" });
+	}
+	function i5e(name) {
+	  shiftRight({ name: name, addrMode: "absoluteX" });
+	}
+	function i46(name) {
+	  shiftRight({ name: name, addrMode: "zeroPage" });
+	}
+	function i56(name) {
+	  shiftRight({ name: name, addrMode: "zeroPageX" });
+	}
 
-	function shiftRight({name = "", accumulator = false, addrMode = "", onlyLowerByte = false}={}) {
+	function shiftRight({
+	  name = "",
+	  accumulator = false,
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
 	  shift({
-	    type : "RIGHT",
-	    name : name,
-	    accumulator : accumulator,
-	    addrMode : addrMode,
-	    onlyLowerByte : onlyLowerByte
+	    type: "RIGHT",
+	    name: name,
+	    accumulator: accumulator,
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
 	  });
 	}
 
@@ -34520,18 +35360,21 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  name = "",
 	  accumulator = false,
 	  addrMode = "",
-	  onlyLowerByte = false
-	}={}) {
+	  onlyLowerByte = false,
+	} = {}) {
 	  let value = exports.reg.A;
 	  let addr;
-	  if ( !accumulator) {
-	    addr = getAddressingModeAddr({addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	  if (!accumulator) {
+	    addr = getAddressingModeAddr({
+	      addrMode: addrMode,
+	      onlyLowerByte: onlyLowerByte,
+	    });
 	    value = exports.memory.readByte(addr).value;
 	  }
 
 	  let oldValue = value;
 	  let byte;
-	  if ( type === "LEFT") {
+	  if (type === "LEFT") {
 	    byte = exports.flags.getByteClearedOn("carry") | ((value >> 7) & 1);
 	    exports.flags.setFromByte(byte);
 	    value <<= 1;
@@ -34542,47 +35385,91 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  exports.flags.setFromByte(byte);
 
 	  consoleDebug({
-	    msg : name + ": shifting " + fmtToHex$1(oldValue) + " " + type + " to " + fmtToHex$1(value)
+	    msg:
+	      name +
+	      ": shifting " +
+	      fmtToHex(oldValue) +
+	      " " +
+	      type +
+	      " to " +
+	      fmtToHex(value),
 	  });
 
 	  exports.flags.toggleZeroAndNegative(value);
-	  if ( accumulator ) {
+	  if (accumulator) {
 	    exports.reg.A = value;
 	    return;
 	  }
-	  exports.memory.writeByte(addr, new WordEntry(value).lowerByteEntry);
+	  let lineNumber = addr;
+	  if (addr in exports.addressLineNumbers) {
+	    lineNumber = exports.addressLineNumbers[addr];
+	  }
+	  exports.memory.writeByte(
+	    addr,
+	    new WordEntry(value, lineNumber).lowerByteEntry
+	  );
 	  return addr;
 	}
 	// rotate left one bit
-	function i2a(name) { rotateLeft({name : name, accumulator : true}); }
-	function i2e(name) { rotateLeft({name : name, addrMode : "absolute"}); }
-	function i3e(name) { rotateLeft({name : name, addrMode : "absoluteX"}); }
-	function i26(name) { rotateLeft({name : name, addrMode : "zeroPage"}); }
-	function i36(name) { rotateLeft({name : name, addrMode : "zeroPageX"}); }
+	function i2a(name) {
+	  rotateLeft({ name: name, accumulator: true });
+	}
+	function i2e(name) {
+	  rotateLeft({ name: name, addrMode: "absolute" });
+	}
+	function i3e(name) {
+	  rotateLeft({ name: name, addrMode: "absoluteX" });
+	}
+	function i26(name) {
+	  rotateLeft({ name: name, addrMode: "zeroPage" });
+	}
+	function i36(name) {
+	  rotateLeft({ name: name, addrMode: "zeroPageX" });
+	}
 
-	function rotateLeft({name = "", accumulator = false, addrMode = "", onlyLowerByte = false}={}) {
+	function rotateLeft({
+	  name = "",
+	  accumulator = false,
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
 	  rotate({
-	    type : "LEFT",
-	    name : name,
-	    accumulator : accumulator,
-	    addrMode : addrMode,
-	    onlyLowerByte : onlyLowerByte
+	    type: "LEFT",
+	    name: name,
+	    accumulator: accumulator,
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
 	  });
 	}
 	// rotate right one bit
-	function i6a(name) { rotateRight({name : name, accumulator : true}); }
-	function i6e(name) { rotateRight({ name : name, addrMode : "absolute"}); }
-	function i7e(name) { rotateRight({ name : name, addrMode : "absoluteX"}); }
-	function i66(name) { rotateRight({ name : name, addrMode : "zeroPage"}); }
-	function i76(name) { rotateRight({name : name, addrMode : "zeroPageX", onlyLowerByte : true}); }
+	function i6a(name) {
+	  rotateRight({ name: name, accumulator: true });
+	}
+	function i6e(name) {
+	  rotateRight({ name: name, addrMode: "absolute" });
+	}
+	function i7e(name) {
+	  rotateRight({ name: name, addrMode: "absoluteX" });
+	}
+	function i66(name) {
+	  rotateRight({ name: name, addrMode: "zeroPage" });
+	}
+	function i76(name) {
+	  rotateRight({ name: name, addrMode: "zeroPageX", onlyLowerByte: true });
+	}
 
-	function rotateRight({name = "", accumulator = false, addrMode = "", onlyLowerByte = false}={}) {
+	function rotateRight({
+	  name = "",
+	  accumulator = false,
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
 	  rotate({
-	    type : "RIGHT",
-	    name : name,
-	    accumulator : accumulator,
-	    addrMode : addrMode,
-	    onlyLowerByte : onlyLowerByte
+	    type: "RIGHT",
+	    name: name,
+	    accumulator: accumulator,
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
 	  });
 	}
 	function rotate({
@@ -34590,12 +35477,15 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  name = "",
 	  accumulator = false,
 	  addrMode = "",
-	  onlyLowerByte = false
-	}={}) {
+	  onlyLowerByte = false,
+	} = {}) {
 	  let value = exports.reg.A;
 	  let addr;
-	  if ( !accumulator) {
-	    addr = getAddressingModeAddr({addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	  if (!accumulator) {
+	    addr = getAddressingModeAddr({
+	      addrMode: addrMode,
+	      onlyLowerByte: onlyLowerByte,
+	    });
 	    value = exports.memory.readByte(addr).value;
 	  }
 
@@ -34607,81 +35497,122 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  } else {
 	    byte = exports.flags.getByteClearedOn("carry") | (value & 1);
 	    value >>= 1;
-	    if(exports.flags.carry.isSet()) {
+	    if (exports.flags.carry.isSet()) {
 	      value |= 0x80;
 	    }
 	  }
 	  exports.flags.setFromByte(byte);
 
 	  consoleDebug({
-	    msg : name + ": shifting " + fmtToHex$1(oldValue) + " " + type + " to " + fmtToHex$1(value)
+	    msg:
+	      name +
+	      ": shifting " +
+	      fmtToHex(oldValue) +
+	      " " +
+	      type +
+	      " to " +
+	      fmtToHex(value),
 	  });
 
 	  exports.flags.toggleZeroAndNegative(value);
-	  if ( accumulator ) {
+	  if (accumulator) {
 	    exports.reg.A = value;
 	    return;
 	  }
-	  exports.memory.writeByte(addr, new WordEntry(value).lowerByteEntry);
+	  let lineNumber = addr;
+	  if (addr in exports.addressLineNumbers) {
+	    lineNumber = exports.addressLineNumbers[addr];
+	  }
+	  exports.memory.writeByte(
+	    addr,
+	    new WordEntry(value, lineNumber).lowerByteEntry
+	  );
 	  return addr;
 	}
 	// Arithmetic =================================================================================
 	// Add memory to accumulator with carry
-	function i69(name) { add({name : name, addrMode : "immediate"}); }
-	function i6d(name) { add({name : name, addrMode : "absolute"}); }
-	function i7d(name) { add({name : name, addrMode : "absoluteX"}); }
-	function i79(name) { add({name : name, addrMode : "absoluteY"}); }
-	function i65(name) { add({name : name, addrMode : "zeroPage"}); }
-	function i75(name) { add({name : name, addrMode : "zeroPageX"}); }
+	function i69(name) {
+	  add({ name: name, addrMode: "immediate" });
+	}
+	function i6d(name) {
+	  add({ name: name, addrMode: "absolute" });
+	}
+	function i7d(name) {
+	  add({ name: name, addrMode: "absoluteX" });
+	}
+	function i79(name) {
+	  add({ name: name, addrMode: "absoluteY" });
+	}
+	function i65(name) {
+	  add({ name: name, addrMode: "zeroPage" });
+	}
+	function i75(name) {
+	  add({ name: name, addrMode: "zeroPageX" });
+	}
 	// TODO: why i75 did this?? {exports.flags.setFromByte(exports.flags.getByteClearedOn("carry") | (value & 1));}
-	function i61(name) { add({name : name, addrMode : "(zeroPage, X)"}); }
-	function i71(name) { add({name : name, addrMode : "(zeroPage), Y"}); }
+	function i61(name) {
+	  add({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function i71(name) {
+	  add({ name: name, addrMode: "(zeroPage), Y" });
+	}
 
-	function add({name = "", addrMode = "", onlyLowerByte = false}={}) {
-	  let addr = getAddressingModeAddr({addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	function add({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
+	  let addr = getAddressingModeAddr({
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
 	  let value = exports.memory.readByte(addr).value;
 
-	  consoleDebug({msg : name + ": adding " + fmtToHex$1(value) + " to regA=" + fmtToHexBr(exports.reg.A)});
-	  exports.reg.A = addTest (value);
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": adding " +
+	      fmtToHex(value) +
+	      " to regA=" +
+	      fmtToHexBr(exports.reg.A),
+	  });
+	  exports.reg.A = addTest(value);
 	  exports.flags.toggleZeroAndNegative(exports.reg.A);
 	  return;
 
 	  function addTest(value) {
-	    if( (exports.reg.A ^ value) & 0x80 ) {
+	    if ((exports.reg.A ^ value) & 0x80) {
 	      exports.flags.overflow._set();
 	    } else {
 	      exports.flags.overflow.clear();
 	    }
 
 	    let tmp;
-	    if( exports.flags.decimal.isSet() ) {
+	    if (exports.flags.decimal.isSet()) {
 	      tmp = (exports.reg.A & 0xf) + (value & 0xf) + exports.flags.carry.value;
-	      if( tmp >= 10 ) {
+	      if (tmp >= 10) {
 	        tmp = 0x10 | ((tmp + 6) & 0xf);
 	      }
 
 	      tmp += (exports.reg.A & 0xf0) + (value & 0xf0);
-	      if( tmp >= 160) {
+	      if (tmp >= 160) {
 	        exports.flags.carry._set();
-	        if( exports.flags.exports.flagsClearedOn("overflow") && tmp >= 0x180) {
+	        if (exports.flags.exports.flagsClearedOn("overflow") && tmp >= 0x180) {
 	          exports.flags.overflow.clear();
 	        }
 	        tmp += 0x60;
 	      } else {
 	        exports.flags.carry.clear();
-	        if(exports.flags.getByteClearedOn("overflow") && tmp < 0x80) {
+	        if (exports.flags.getByteClearedOn("overflow") && tmp < 0x80) {
 	          exports.flags.overflow.clear();
-	        }      }
+	        }
+	      }
 	    } else {
 	      tmp = exports.reg.A + value + exports.flags.carry.value;
-	      if( tmp >= 0x100 ) {
+	      if (tmp >= 0x100) {
 	        exports.flags.carry._set();
-	        if(exports.flags.getByteClearedOn("overflow") && tmp >= 0x180) {
+	        if (exports.flags.getByteClearedOn("overflow") && tmp >= 0x180) {
 	          exports.flags.overflow.clear();
 	        }
 	      } else {
 	        exports.flags.carry.clear();
-	        if(exports.flags.getByteClearedOn("overflow") && tmp < 0x80) {
+	        if (exports.flags.getByteClearedOn("overflow") && tmp < 0x80) {
 	          exports.flags.overflow.clear();
 	        }
 	      }
@@ -34690,22 +35621,46 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 	// Subtract memory from accumulator with borrow
-	function ie9(name) { substract({name : name, addrMode : "immediate"}); }
-	function ied(name) { substract({name : name, addrMode : "absolute"}); }
-	function ifd(name) { substract({name : name, addrMode : "absoluteX"}); }
-	function if9(name) { substract({name : name, addrMode : "absoluteY"}); }
-	function ie5(name) { substract({name : name, addrMode : "zeroPage"}); }
-	function if5(name) { substract({name : name, addrMode : "zeroPageX"}); }
+	function ie9(name) {
+	  substract({ name: name, addrMode: "immediate" });
+	}
+	function ied(name) {
+	  substract({ name: name, addrMode: "absolute" });
+	}
+	function ifd(name) {
+	  substract({ name: name, addrMode: "absoluteX" });
+	}
+	function if9(name) {
+	  substract({ name: name, addrMode: "absoluteY" });
+	}
+	function ie5(name) {
+	  substract({ name: name, addrMode: "zeroPage" });
+	}
+	function if5(name) {
+	  substract({ name: name, addrMode: "zeroPageX" });
+	}
 	// TODO: why if5 did this?? {exports.flags.setFromByte(exports.flags.getByteClearedOn("carry") | (value & 1));}
-	function ie1(name) { substract({name : name, addrMode : "(zeroPage, X)"}); }
-	function if1(name) { substract({name : name, addrMode : "(zeroPage), Y"}); }
+	function ie1(name) {
+	  substract({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function if1(name) {
+	  substract({ name: name, addrMode: "(zeroPage), Y" });
+	}
 
-	function substract({name = "", addrMode = "", onlyLowerByte = false}={}) {
-	  let addr = getAddressingModeAddr({addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	function substract({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
+	  let addr = getAddressingModeAddr({
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
 	  let value = exports.memory.readByte(addr).value;
 
 	  consoleDebug({
-	    msg : name + ": substracting " + fmtToHex$1(value) + " from regA=" + fmtToHexBr(exports.reg.A)
+	    msg:
+	      name +
+	      ": substracting " +
+	      fmtToHex(value) +
+	      " from regA=" +
+	      fmtToHexBr(exports.reg.A),
 	  });
 	  exports.reg.A = testSubstract(value);
 	  exports.flags.toggleZeroAndNegative(exports.reg.A);
@@ -34713,7 +35668,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  return;
 
 	  function testSubstract(value) {
-	    if( (exports.reg.A ^ value ) & 0x80 ) {
+	    if ((exports.reg.A ^ value) & 0x80) {
 	      vflag = 1;
 	    } else {
 	      vflag = 0;
@@ -34721,9 +35676,10 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	    let tmp;
 	    let w;
-	    if(exports.flags.decimal.isSet()) {
-	      tmp = 0xf + (exports.reg.A & 0xf) - (value & 0xf) + exports.flags.carry.value;
-	      if( tmp < 0x10 ) {
+	    if (exports.flags.decimal.isSet()) {
+	      tmp =
+	        0xf + (exports.reg.A & 0xf) - (value & 0xf) + exports.flags.carry.value;
+	      if (tmp < 0x10) {
 	        w = 0;
 	        tmp -= 6;
 	      } else {
@@ -34731,103 +35687,283 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        tmp -= 0x10;
 	      }
 	      w += 0xf0 + (exports.reg.A & 0xf0) - (value & 0xf0);
-	      if( w < 0x100 ) {
+	      if (w < 0x100) {
 	        exports.flags.carry.clear();
-	        if(exports.flags.getByteClearedOn("overflow") && w < 0x80) {
+	        if (exports.flags.getByteClearedOn("overflow") && w < 0x80) {
 	          exports.flags.overflow.clear();
 	        }
 	        w -= 0x60;
 	      } else {
 	        exports.flags.carry._set();
-	        if(exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
+	        if (exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
 	          exports.flags.overflow.clear();
 	        }
 	      }
 	      w += tmp;
 	    } else {
 	      w = 0xff + exports.reg.A - value + exports.flags.carry.value;
-	      if( w < 0x100 ) {
+	      if (w < 0x100) {
 	        exports.flags.carry.clear();
-	        if(exports.flags.getByteClearedOn("overflow") && w < 0x80 ) {
+	        if (exports.flags.getByteClearedOn("overflow") && w < 0x80) {
 	          exports.flags.overflow.clear();
 	        }
 	      } else {
 	        exports.flags.carr._set();
-	        if(exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
+	        if (exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
 	          exports.flags.overflow.clear();
 	        }
 	      }
 	    }
 	    return getLowerByte(w);
 	  }
-
 	}
 	// LOAD and S==================================================================================
 	// load accumulator with memory LDA
-	function ia9(name) { load({name : name, addrMode : "immediate"}); }
-	function iad(name) { load({name : name, addrMode : "absolute"}); }
-	function ibd(name) { load({name : name, addrMode : "absoluteX"}); }
-	function ib9(name) { load({name : name, addrMode : "absoluteY"}); }
-	function ia5(name) { load({name : name, addrMode : "zeroPage"}); }
-	function ib5(name) { load({name : name, addrMode : "zeroPageX", onlyLowerByte : true}); }
+	function ia9(name) {
+	  load({ name: name, addrMode: "immediate" });
+	}
+	function iad(name) {
+	  load({ name: name, addrMode: "absolute" });
+	}
+	function ibd(name) {
+	  load({ name: name, addrMode: "absoluteX" });
+	}
+	function ib9(name) {
+	  load({ name: name, addrMode: "absoluteY" });
+	}
+	function ia5(name) {
+	  load({ name: name, addrMode: "zeroPage" });
+	}
+	function ib5(name) {
+	  load({ name: name, addrMode: "zeroPageX", onlyLowerByte: true });
+	}
 	// TODO: why do we bytecut here?
-	function ia1(name) { load({name : name, addrMode : "(zeroPage, X)"}); }
-	function ib1(name) { load({name : name, addrMode : "(zeroPage), Y"}); }
+	function ia1(name) {
+	  load({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function ib1(name) {
+	  load({ name: name, addrMode: "(zeroPage), Y" });
+	}
 
 	// load index X with memory
-	function ia2(name) { load({name : name, register : "X", addrMode : "immediate"}); }
-	function iae(name) { load({name : name, register : "X", addrMode : "absolute"}); }
-	function ibe(name) { load({name : name, register : "X", addrMode : "absoluteY"}); }
-	function ia6(name) { load({name : name, register : "X", addrMode : "zeroPage"}); }
-	function ib6(name) { load({name : name, register : "X", addrMode : "zeroPageY"}); }
+	function ia2(name) {
+	  load({ name: name, register: "X", addrMode: "immediate" });
+	}
+	function iae(name) {
+	  load({ name: name, register: "X", addrMode: "absolute" });
+	}
+	function ibe(name) {
+	  load({ name: name, register: "X", addrMode: "absoluteY" });
+	}
+	function ia6(name) {
+	  load({ name: name, register: "X", addrMode: "zeroPage" });
+	}
+	function ib6(name) {
+	  load({ name: name, register: "X", addrMode: "zeroPageY" });
+	}
 
 	// load index Y with memory
-	function ia0(name) { load({name : name, register : "Y", addrMode : "immediate"}); }
-	function iac(name) { load({name : name, register : "Y", addrMode : "absolute"}); }
-	function ibc(name) { load({name : name, register : "Y", addrMode : "absoluteX"}); }
-	function ia4(name) { load({name : name, register : "Y", addrMode : "zeroPage"}); }
-	function ib4(name) { load({name : name, register : "Y", addrMode : "zeroPageX"}); }
+	function ia0(name) {
+	  load({ name: name, register: "Y", addrMode: "immediate" });
+	}
+	function iac(name) {
+	  load({ name: name, register: "Y", addrMode: "absolute" });
+	}
+	function ibc(name) {
+	  load({ name: name, register: "Y", addrMode: "absoluteX" });
+	}
+	function ia4(name) {
+	  load({ name: name, register: "Y", addrMode: "zeroPage" });
+	}
+	function ib4(name) {
+	  load({ name: name, register: "Y", addrMode: "zeroPageX" });
+	}
 
-	function load({name = "", register = "A", addrMode = "", onlyLowerByte = false}={}) {
-	  let addr = getAddressingModeAddr({addrMode : addrMode, onlyLowerByte : onlyLowerByte});
+	function load({
+	  name = "",
+	  register = "A",
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
+	  let addr = getAddressingModeAddr({
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
 	  let value = exports.memory.readByte(addr).value;
+	  let lineNumber = fmtToHex(addr);
 
-	  consoleDebug({msg : name + ": loading value " + fmtToHex$1(value) + " to reg" + register});
+	  if (addr in exports.addressLineNumbers) {
+	    lineNumber +=
+	      "[lineNo: " + exports.addressLineNumbers[addr].lineNumber + "]";
+	  }
+
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": loading value from addr " +
+	      lineNumber +
+	      "=" +
+	      fmtToHex(value) +
+	      " to reg" +
+	      register,
+	  });
 	  exports.reg[register] = value;
 	  exports.flags.toggleZeroAndNegative(value);
 	  return;
 	}
 	// store accumulator in memory
-	function i8d(name) { return store({name: name, addrMode : "absolute"}); }
-	function i9d(name) { return store({name: name, addrMode : "absoluteX"}); }
-	function i99(name) { return store({name: name, addrMode : "absoluteY"}); }
-	function i85(name) { return store({name: name, addrMode : "zeroPage"}); }
-	function i95(name) { return store({name: name, addrMode : "zeroPageX"}); }
-	function i81(name) { return store({name: name, addrMode : "(zeroPage, X)"}); }
-	function i91(name) { return store({name: name, addrMode : "(zeroPage), Y"}); }
-
-	// store index X in memory
-	function i8e(name) { return store({name: name, register : "X", addrMode : "absolute"}); }
-	function i86(name) { return store({name: name, register : "X", addrMode : "zeroPage"}); }
-	function i96(name) { return store({name: name, register : "X", addrMode : "zeroPageY"}); }
-
-	// store index Y in memory
-	function i8c(name) { return store({name: name, register : "Y", addrMode : "absolute"}); }
-	function i84(name) { return store({name: name, register : "Y", addrMode : "zeroPage"}); }
-	function i94(name) { return store({name: name, register : "Y", addrMode : "zeroPageX"}); }
-
-	function store({name = "", register = "A", addrMode = "", onlyLowerByte = false}={}) {
-	  let addr = getAddressingModeAddr({addrMode : addrMode, onlyLowerByte : onlyLowerByte});
-	  let byte = new WordEntry(exports.reg[register]).lowerByteEntry;
-	  exports.memory.writeByte(addr, byte);
-
-	  consoleDebug({
-	    msg : name + ": storing reg" + register + "="+ fmtToHexBr(byte.value) + " to addr " + fmtToHexWord(addr)
-	  });
-	  return addr;
+	function i8d(name) {
+	  return store({ name: name, addrMode: "absolute" });
+	}
+	function i9d(name) {
+	  return store({ name: name, addrMode: "absoluteX" });
+	}
+	function i99(name) {
+	  return store({ name: name, addrMode: "absoluteY" });
+	}
+	function i85(name) {
+	  return store({ name: name, addrMode: "zeroPage" });
+	}
+	function i95(name) {
+	  return store({ name: name, addrMode: "zeroPageX" });
+	}
+	function i81(name) {
+	  return store({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function i91(name) {
+	  return store({ name: name, addrMode: "(zeroPage), Y" });
 	}
 
-	function getAddressingModeAddr({addrMode = "", onlyLowerByte = false}={}) {
+	// store index X in memory
+	function i8e(name) {
+	  return store({ name: name, register: "X", addrMode: "absolute" });
+	}
+	function i86(name) {
+	  return store({ name: name, register: "X", addrMode: "zeroPage" });
+	}
+	function i96(name) {
+	  return store({ name: name, register: "X", addrMode: "zeroPageY" });
+	}
+
+	// store index Y in memory
+	function i8c(name) {
+	  return store({ name: name, register: "Y", addrMode: "absolute" });
+	}
+	function i84(name) {
+	  return store({ name: name, register: "Y", addrMode: "zeroPage" });
+	}
+	function i94(name) {
+	  return store({ name: name, register: "Y", addrMode: "zeroPageX" });
+	}
+
+	function store({
+	  name = "",
+	  register = "A",
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
+	  let addr = getAddressingModeAddr({
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
+	  let lineNumber = addr;
+	  if (addr in exports.addressLineNumbers) {
+	    lineNumber = exports.addressLineNumbers[addr].lineNumber;
+	  }
+	  let byteEntry = new WordEntry(exports.reg[register], lineNumber)
+	    .lowerByteEntry;
+	  exports.memory.writeByte(addr, byteEntry);
+
+	  let msg =
+	    name +
+	    ": storing reg" +
+	    register +
+	    "=" +
+	    fmtToHexBr(byteEntry.value) +
+	    " to addr " +
+	    fmtToHexWord(addr);
+	  if (addr in exports.addressLineNumbers) {
+	    msg += "[lineNo: " + exports.addressLineNumbers[addr].lineNumber + "]";
+	  }
+
+	  if (exports.debug) {
+	    adjustTextLine(addr, lineNumber);
+	  }
+
+	  consoleDebug({ msg: msg });
+	  return addr;
+
+	  function adjustTextLine(addr, lineNumber) {
+	    if (addr in exports.addressLineNumbers) {
+	      let line = exports.editor.state.doc.line(lineNumber);
+	      let lastLineText = line.text;
+	      let label = "";
+	      if (hasLabel(lastLineText)) {
+	        label = lastLineText.replace(/^(\w*:).*$/, "$1");
+	      }
+	      lastLineText = lastLineText.replace(/^\w+:(.*)/, "$1");
+	      let lineLeadSpace = lastLineText.replace(/^(\s*).*/, "$1");
+	      lastLineText = lastLineText.replace(/^\s+/, "");
+	      lastLineText = lastLineText.replace(/\s+$/, "");
+
+	      let lastLineTextInstruction = lastLineText.replace(/(\w+)\s*.*/, "$1");
+	      let lastLineTextRemainder = lastLineText.replace(/\w+\s*(\w*)/, "$1");
+	      let lastLineToChange = lastLineTextInstruction;
+
+	      if (exports.addressLineNumbers[addr].isInstruction) {
+	        exports.editor.dispatch({
+	          changes: {
+	            from: line.from,
+	            to: line.to,
+	            insert:
+	              label +
+	              lineLeadSpace +
+	              Command.getOpCodeName(byteEntry.value) +
+	              " " +
+	              lastLineTextRemainder +
+	              " [" +
+	              lastLineTextInstruction +
+	              " " +
+	              lastLineTextRemainder +
+	              "]",
+	          },
+	        });
+	      } else {
+	        exports.editor.dispatch({
+	          changes: {
+	            from: line.from,
+	            to: line.to,
+	            insert:
+	              label +
+	              lineLeadSpace +
+	              lastLineTextInstruction +
+	              " " +
+	              fmtToHex(byteEntry.value) +
+	              " [" +
+	              lastLineTextInstruction +
+	              " " +
+	              lastLineTextRemainder +
+	              "]",
+	          },
+	        });
+	      }
+	    }
+
+	    return;
+	  }
+
+	  function hasLabel(line) {
+	    if (line.match(/^(\w+):.*$/)) {
+	      return true;
+	    }
+	    return false;
+	  }
+	}
+
+	function getAddressingModeAddr({
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
 	  let zp;
 	  let addr;
 	  if (addrMode == "immediate") {
@@ -34836,7 +35972,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return addr;
 	  }
 
-	  switch(addrMode) {
+	  switch (addrMode) {
 	    case "absolute":
 	    case "absoluteX":
 	    case "absoluteY":
@@ -34850,8 +35986,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    case "(zeroPage), Y":
 	      zp = addr = exports.memory.readByte(exports.reg.PC).value;
 	      exports.reg.PC++; // advance program counter
+	    default:
 	  }
-	  switch(addrMode) {
+	  switch (addrMode) {
 	    case "(zeroPage, X)":
 	      zp = getLowerByte(addr + exports.reg.X);
 	    case "(zeroPage), Y": // and "(zeroPage, X), due to missing break!!"
@@ -34859,17 +35996,18 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      let upperByte = exports.memory.readByte(zp + 1).value;
 	      addr = (upperByte << 8) + lowerByte;
 	      break;
+	    default:
 	  }
 
 	  addr += getRegisterAddr(addrMode.slice(-1));
 
 	  if (onlyLowerByte) {
-	    return getLowerByte(addr);
+	    addr = getLowerByte(addr);
 	  }
 	  return addr;
 
 	  function getRegisterAddr(register) {
-	    switch(register) {
+	    switch (register) {
 	      case "X":
 	        return exports.reg.X;
 	      case "Y": // for "(zeroPage), Y" as well
@@ -34881,26 +36019,28 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 
 	// Test bits in memory with accumulator =======================================================
-	function i89(name) { //immediate
-	  ierr(name + ": [UNIMPL] testing immediate bits with regA/accumulator");
-	  // let value = exports.memory.readByte(exports.reg.pc).value;
-	  // exports.reg.PC++; // advance program counter
-	  // testBits(value);
-	  // consoleDebug({msg : name})
-	} // TODO: Why is immediate mode not implemented???
-
-	function i2c(name) { testBits(name, "absolute"); }
-	function i24(name) { testBits(name, "zeroPage"); }
+	function i2c(name) {
+	  testBits(name, "absolute");
+	}
+	function i24(name) {
+	  testBits(name, "zeroPage");
+	}
 
 	function testBits(name, addrMode) {
 	  let addr = getAddressingModeAddr(addrMode);
 	  let value = exports.memory.readByte(addr).value;
 
 	  consoleDebug({
-	    msg : name + ": testing bits " + fmtToHex$1(value)
-	    + " at " + fmtToHexWord(addr) + " with regA/accumulator"
+	    msg:
+	      name +
+	      ": testing bits " +
+	      fmtToHex(value) +
+	      " at " +
+	      fmtToHexWord(addr) +
+	      " with regA/accumulator",
 	  });
-	  if( value & exports.reg.A ) { //0xfd + 0x02 = 0xff
+	  if (value & exports.reg.A) {
+	    //0xfd + 0x02 = 0xff
 	    exports.flags.zero.clear();
 	  } else {
 	    exports.flags.zero._set();
@@ -34911,45 +36051,67 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 
 	// Transfer [implied addressing mode]==========================================================
-	function iaa(name) { transfer(name, "A", "X"); }
-	function ia8(name) { transfer(name, "A", "Y"); }
-	function i8a(name) { transfer(name, "X", "A"); }
-	function i98(name) { transfer(name, "Y", "A"); }
-	function iba(name) { transfer(name, "SP", "X"); }
-	function i9a(name) { transfer(name, "X", "SP"); }
+	function iaa(name) {
+	  transfer(name, "A", "X");
+	}
+	function ia8(name) {
+	  transfer(name, "A", "Y");
+	}
+	function i8a(name) {
+	  transfer(name, "X", "A");
+	}
+	function i98(name) {
+	  transfer(name, "Y", "A");
+	}
+	function iba(name) {
+	  transfer(name, "SP", "X");
+	}
+	function i9a(name) {
+	  transfer(name, "X", "SP");
+	}
 
 	function transfer(name, srcRegister, dstRegister) {
 	  let value = exports.reg[srcRegister];
-	  if ( srcRegister === "SP") {
+	  if (srcRegister === "SP") {
 	    value = exports.memory.regSP;
 	  }
 	  value = getLowerByte(value);
-	  if ( dstRegister === "SP") {
+	  if (dstRegister === "SP") {
 	    exports.memory.setRegSP(value);
 	  } else {
 	    exports.reg[dstRegister] = value;
 	    exports.flags.toggleZeroAndNegative(value); // why for stackpointer?
 	  }
-	  consoleDebug({msg : name + ": transfering reg" + srcRegister + " to reg" + dstRegister});
+	  consoleDebug({
+	    msg: name + ": transfering reg" + srcRegister + " to reg" + dstRegister,
+	  });
 	}
 
 	// Stack [addressing Mode: implied]============================================================
-	function i08(name) { pushInstruction(name, "P"); }
-	function i28(name) { pullInstruction(name, "P"); }
-	function i48(name) { pushInstruction(name, "A"); }
-	function i68(name) { pullInstruction(name, "A"); }
+	function i08(name) {
+	  pushInstruction(name, "P");
+	}
+	function i28(name) {
+	  pullInstruction(name, "P");
+	}
+	function i48(name) {
+	  pushInstruction(name, "A");
+	}
+	function i68(name) {
+	  pullInstruction(name, "A");
+	}
 
-	function pushInstruction (name, register) {
+	function pushInstruction(name, register) {
 	  let byte = exports.reg.A;
 	  let valueName = "regA/accumulator=" + fmtToHexBr(exports.reg.A);
 	  if (register !== "A") {
 	    byte = exports.flags.byte;
 	    valueName = "regP/processor status=" + fmtToHexBr(byte);
 	  }
-	  consoleDebug({msg : name + ": pushing " + valueName + " to Stack"});
+	  consoleDebug({ msg: name + ": pushing " + valueName + " to Stack" });
 	  exports.memory.pushByteToStack(new ByteEntry(byte));
 	}
-	function pullInstruction (name, register = "A") {
+	function pullInstruction(name, register = "A") {
 	  let valueName;
 	  let byte = exports.memory.popByteFromStack().value;
 	  if (register === "A") {
@@ -34960,160 +36122,621 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    exports.flags.setFromByte(byte);
 	    valueName = "regP/processor status=" + fmtToHexBr(exports.flags.byte);
 	  }
-	  consoleDebug({msg : name + ": pulling " + valueName + " from Stack"});
+	  consoleDebug({ msg: name + ": pulling " + valueName + " from Stack" });
 	}
 	// Set and Clear [implied addressing mode]=====================================================
 	// TODO: i58 and i78 are not implemented?
-	function i58(name) { console.warn(name + ": [UNIMPL] clearing interrupt disable status");}
-	function i78(name) { console.warn(name + ": [UNIMP] setting interrupt disable status"); }
-	function i18(name) { clearFlag(name, "carry"); }
-	function i38(name) { setFlag(name, "carry"); }
-	function id8(name) { clearFlag(name, "decimal"); }
-	function if8(name) { setFlag(name, "decimal"); }
-	function ib8(name) { clearFlag(name, "overflow"); }
+	function i58(name) {
+	  exports.flags.clear();
+	  console.warn(name + ": clearing interrupt disable status");
+	}
+	function i78(name) {
+	  exports.flags._set();
+	  console.warn(name + ": setting interrupt disable status");
+	}
+	function i18(name) {
+	  clearFlag(name, "carry");
+	}
+	function i38(name) {
+	  setFlag(name, "carry");
+	}
+	function id8(name) {
+	  clearFlag(name, "decimal");
+	}
+	function if8(name) {
+	  setFlag(name, "decimal");
+	}
+	function ib8(name) {
+	  clearFlag(name, "overflow");
+	}
 	// clearValue + SetValue = 0xff = 255
 	function clearFlag(name, flagName) {
-	  consoleDebug ({msg : name + ": clearing " + flagName + " flag"});
+	  consoleDebug({ msg: name + ": clearing " + flagName + " flag" });
 	  exports.flags[flagName].clear();
 	}
 	function setFlag(name, flagName) {
-	  consoleDebug ({msg : name + ": setting " + flagName + " flag"});
+	  consoleDebug({ msg: name + ": setting " + flagName + " flag" });
 	  exports.flags[flagName]._set();
 	}
 
 	// Miscellaneous ==============================================================================
-	function i00(name) { // implied
+	function i00(name) {
+	  // implied
 	  exports.codeRunning = false;
-	  consoleDebug({msg : name + "BRK : Forcing interrupt"});
+	  exports.flags.break._set();
+	  exports.flags.interruptDisable._set();
+	  consoleDebug({ msg: name + "BRK : Forcing interrupt" });
 	}
 
-	function iea(name) { // implied
-	  consoleDebug({msg: name + ": NOOP"});
+	function iea(name) {
+	  // implied
+	  consoleDebug({ msg: name + ": NOOP" });
 	}
 	// undefined opcodes ==========================================================================
-	function i02(name) { ierr(name); }
-	function i03(name) { ierr(name); }
-	function i04(name) { ierr(name); }
-	function i07(name) { ierr(name); }
-	function i0b(name) { ierr(name); }
-	function i0c(name) { ierr(name); }
-	function i0f(name) { ierr(name); }
-	function i12(name) { ierr(name); }
-	function i13(name) { ierr(name); }
-	function i14(name) { ierr(name); }
-	function i17(name) { ierr(name); }
-	function i1a(name) { ierr(name); }
-	function i1b(name) { ierr(name); }
-	function i1c(name) { ierr(name); }
-	function i1f(name) { ierr(name); }
-	function i22(name) { ierr(name); }
-	function i23(name) { ierr(name); }
-	function i27(name) { ierr(name); }
-	function i2b(name) { ierr(name); }
-	function i2f(name) { ierr(name); }
-	function i32(name) { ierr(name); }
-	function i33(name) { ierr(name); }
-	function i34(name) { ierr(name); }
-	function i37(name) { ierr(name); }
-	function i3a(name) { ierr(name); }
-	function i3b(name) { ierr(name); }
-	function i3c(name) { ierr(name); }
-	function i3f(name) { ierr(name); }
-	function i42(name) { ierr(name); }
-	function i43(name) { ierr(name); }
-	function i44(name) { ierr(name); }
-	function i47(name) { ierr(name); }
-	function i4b(name) { ierr(name); }
-	function i4f(name) { ierr(name); }
-	function i52(name) { ierr(name); }
-	function i53(name) { ierr(name); }
-	function i54(name) { ierr(name); }
-	function i57(name) { ierr(name); }
-	function i5a(name) { ierr(name); }
-	function i5b(name) { ierr(name); }
-	function i5c(name) { ierr(name); }
-	function i5f(name) { ierr(name); }
-	function i62(name) { ierr(name); }
-	function i63(name) { ierr(name); }
-	function i64(name) { ierr(name); }
-	function i67(name) { ierr(name); }
-	function i6b(name) { ierr(name); }
-	function i6f(name) { ierr(name); }
-	function i72(name) { ierr(name); }
-	function i73(name) { ierr(name); }
-	function i74(name) { ierr(name); }
-	function i77(name) { ierr(name); }
-	function i7a(name) { ierr(name); }
-	function i7b(name) { ierr(name); }
-	function i7c(name) { ierr(name); }
-	function i7f(name) { ierr(name); }
-	function i80(name) { ierr(name); }
-	function i82(name) { ierr(name); }
-	function i83(name) { ierr(name); }
-	function i87(name) { ierr(name); }
-	function i8b(name) { ierr(name); }
-	function i8f(name) { ierr(name); }
-	function i92(name) { ierr(name); }
-	function i93(name) { ierr(name); }
-	function i97(name) { ierr(name); }
-	function i9b(name) { ierr(name); }
-	function i9c(name) { ierr(name); }
-	function i9e(name) { ierr(name); }
-	function i9f(name) { ierr(name); }
-	function ia3(name) { ierr(name); }
-	function ia7(name) { ierr(name); }
-	function iab(name) { ierr(name); }
-	function iaf(name) { ierr(name); }
-	function ib2(name) { ierr(name); }
-	function ib3(name) { ierr(name); }
-	function ib7(name) { ierr(name); }
-	function ibb(name) { ierr(name); }
-	function ibf(name) { ierr(name); }
-	function ic2(name) { ierr(name); }
-	function ic3(name) { ierr(name); }
-	function ic7(name) { ierr(name); }
-	function icb(name) { ierr(name); }
-	function icf(name) { ierr(name); }
-	function id2(name) { ierr(name); }
-	function id3(name) { ierr(name); }
-	function id4(name) { ierr(name); }
-	function id7(name) { ierr(name); }
-	function ida(name) { ierr(name); }
-	function idb(name) { ierr(name); }
-	function idc(name) { ierr(name); }
-	function idf(name) { ierr(name); }
-	function ie2(name) { ierr(name); }
-	function ie3(name) { ierr(name); }
-	function ie7(name) { ierr(name); }
-	function ieb(name) { ierr(name); }
-	function ief(name) { ierr(name); }
-	function if2(name) { ierr(name); }
-	function if3(name) { ierr(name); }
-	function if4(name) { ierr(name); }
-	function if7(name) { ierr(name); }
-	function ifa(name) { ierr(name); }
-	function ifb(name) { ierr(name); }
-	function ifc(name) { ierr(name); }
-	function iff(name) { ierr(name); }
+
+	function i1a(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // NOP implied
+	function i3a(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // NOP implied
+	function i5a(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // NOP implied
+	function i7a(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // NOP implied
+	function ida(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // NOP implied
+	function ifa(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // NOP implied
+
+	function i04(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP zp
+	function i14(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP zp,X
+	function i34(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP zp,X
+	function i44(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP zp
+	function i54(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP zp,X
+	function i64(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP zp
+	function i74(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP zp,X
+	function i80(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP imm
+	function i82(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP imm
+	function i89(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP imm
+	function ic2(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP imm
+	function id4(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP zp,X
+	function ie2(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP imm
+	function if4(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DOP zp,X
+
+	function i0c(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // TOP abs
+	function i1c(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // TOP abs,X
+	function i3c(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // TOP abs,X
+	function i5c(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // TOP abs,X
+	function i7c(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // TOP abs,X
+	function idc(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // TOP abs,X
+	function ifc(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // TOP abs,X
+
+	function i02(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function i12(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function i22(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function i32(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function i42(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function i52(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function i62(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function i72(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function i92(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function ib2(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function id2(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+	function if2(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // KIL implied
+
+	// --------------------------------------------------------------------------------------------
+	function i0b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // AAC immediate
+	function i2b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // AAC immediate
+
+	function i87(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // AAX zp
+	function i97(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // AAX zp, Y
+	function i83(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // AAX (indirect, Y)
+	function i8f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // AAX abs
+
+	function i6b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ARR immediate
+
+	function i4b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ASR immediate
+
+	function iab(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ATX immediate
+
+	function i9f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // AXA abs, y
+	function i93(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // AXA (ind), Y
+
+	function icb(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // AXS
+
+	function ic7(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DCP zp
+	function id7(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DCP zp, X
+	function icf(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DCP abs
+	function idf(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DCP abs, X
+	function idb(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DCP abs, Y
+	function ic3(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DCP (ind, X)
+	function id3(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // DCP (ind), Y
+
+	function ie7(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ISC zp
+	function if7(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ISC zp, X
+	function ief(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ISC abs
+	function iff(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ISC abs,X
+	function ifb(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ISC abs,Y
+	function ie3(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ISC (ind,X)
+	function if3(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // ISC (ind), Y
+
+	function ibb(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // LAR abs,y
+
+	function ia7(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // LAX zp
+	function ib7(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // LAX zp,Y
+	function iaf(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // LAX abs
+	function ibf(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // LAX abs,Y
+	function ia3(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // LAX (ind, X)
+	function ib3(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // LAX (ind), Y
+
+	function i27(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RLA zp
+	function i37(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RLA zp,X
+	function i2f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RLA abs
+	function i3f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RLA abs,X
+	function i3b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RLA abs,Y
+	function i23(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RLA (ind,X)
+	function i33(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RLA (ind), Y
+
+	function i67(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RRA zp
+	function i77(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RRA zp,X
+	function i6f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RRA abs
+	function i7f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RRA abs,X
+	function i7b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RRA abs,Y
+	function i63(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RRA (ind, X)
+	function i73(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // RRA (ind), Y
+
+	function ieb(name) {
+	  ie9(name);
+	} // same as ie9, SUB immediate
+
+	function i07(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SLO zp
+	function i17(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SLO zp,X
+	function i0f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SLO abs
+	function i1f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SLO abs,X
+	function i1b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SLO abs,Y
+	function i03(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SLO (ind, X)
+	function i13(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SLO (ind), Y
+
+	function i47(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SRE zp
+	function i57(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SRE zp,X
+	function i4f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SRE abs
+	function i5f(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SRE abs,X
+	function i5b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SRE abs,Y
+	function i43(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SRE (ind, X)
+	function i53(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SRE (ind), Y
+
+	function i9e(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SXA abs, Y
+
+	function i9c(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // SYA abs, X
+
+	function i8b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // XAA exact operation unknown
+
+	function i9b(name) {
+	  if (!exports.allowIllegalOpcode) {
+			ierr(name);
+		}
+	} // XAS abs,Y
 
 	function ierr(name) {
-	  let message = name + " unknown";
+	  let message = name + " illegal Opcode not allowed, skipping";
 	  raiseRunTimeError(fmtToHexWord(exports.reg.PC - 1), message);
 	  console.warn(message);
-	  // exports.codeRunning = false; // TODO: some examples depend on ierr to keep the code running
 	}
 
 	/*
 	 *  keyPress() - Store keycode in ZP $ff
 	 */
-
-
 	function keyPress(e) {
 	  if (typeof window.event != "undefined") {
 	    e = window.event;
 	  }
 	  if (e.type == "keypress") {
-	    exports.memory.writeByte(0xff, new ByteEntry(e.which));
+	    exports.memory.writeByte(0xff, new ByteEntry(e.which, 0xff));
 	  }
 	}
 
@@ -35151,57 +36774,49 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 
 	function togglePresentationMode() {
+	  let button = $("#largeModeButton");
+	  if (button.html() === "Large Mode") {
+	    button.html("Normal Mode");
+	  } else if (button.html() === "Normal Mode") {
+	    button.html("Large Mode");
+	  }
 	  $("body").toggleClass("presentation-mode");
 	}
 
-	/*
-	 *  disableButtons() - Disables the Run and Debug buttons when text is
-	 *                     altered in the code editor
-	 */
-	function disableButtons() {
-	  exports.codeRunning = false;
-	  clearInterval(exports.myInterval);
-	  $("#runButton").prop("disabled", true);
-	  $("#hexDumpButton").prop("disabled", true);
-	  $("#fileSelect").prop("disabled", false);
-	  $("#compileButton").prop("disabled", false);
-	  $("#runButton").html("Run");
-	  $("#code").focus();
-	  $("#stepButton").prop("disabled", true);
-	  $("#gotoButton").prop("disabled", true);
+	function toggleIllegalOpCode() {
+	  exports.allowIllegalOpcode = !exports.allowIllegalOpcode;
 	}
 
 	/*
 	 *  Load() - Loads a file from server
 	 */
-	function Load({file}={}) {
-	  console.log("loading");
+	function Load({ file } = {}) {
+	  exports.codeRunning = false;
+	  clearInterval(exports.myInterval);
+
 	  resetEverything();
-	  disableButtons();
+	  resetMessageWindow();
 	  $("#code").value = "Loading, please wait ...";
 	  $("#compileButton").prop("disabled", true);
-	  let xmlhttp = new XMLHttpRequest();
-	  xmlhttp.onreadystatechange = FileLoaded;
-	  xmlhttp.open("GET", "assets/js/examples/" + file);
-	  xmlhttp.send(null);
-	  exports.debuggeR.disable();
-
-	  function FileLoaded() {
-	    if (xmlhttp.readyState == 4) {
-	      if (xmlhttp.status == 200) {
-	        $("#code").val(xmlhttp.responseText);
+	  $.ajax({
+	    url : "./assets/js/examples/" + file,
+	    success : function (data, textStatus, _) {
+	      if (textStatus == 200) {
+	        $("#code").val(data);
 	        $("#compileButton").prop("disabled", false);
 	      }
 	    }
-	  }
+	  });
+	  exports.debuggeR.disable();
 	}
 
 	/*
-	 *  resetEverything() - Reset CPU and memory.
+	 *  resetEverything() - Reset CPU, memory and html (partly).
 	 */
 	function resetEverything() {
+	  exports.compiler = null;
+	  exports.error = false;
 	  exports.codeRunning = false;
-	  $("#messages").html("");
 	  exports.display.reset();
 	  exports.memory.reset(); // clear ZP, stack
 
@@ -35211,25 +36826,50 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  exports.instructionCounter = 0;
 
 	  exports.debuggeR.updateInfo();
+
+	  $("#code").focus();
+	  $("#runButton").prop("disabled", true);
+	  $("#runButton").html("Run");
+	  $("#compileButton").prop("disabled", false);
+	  $("#fileSelect").prop("disabled", false);
+	  $("#stepButton").prop("disabled", true);
+	  $("#gotoButton").prop("disabled", true);
 	}
 
 	function compileCode() {
 	  resetEverything();
+	  resetMessageWindow();
 
-	  let compiler = new Compiler(exports.editor.state.doc.toString())
-	    .preprocessCode()
-	    .scanLabels()
-	    .compile()
-	    .insertLabelAddressesToMemory();
+	  let codeToCompile = exports.editor.state.doc.toString();
+	  if (codeToCompile === "") {
+	    resetEverything();
+	    printMessage("<b>No code in editor.<\b>");
+	    return;
+	  }
+
+	  let compiler = new Compiler(codeToCompile).preprocessCode();
+	  exports.compiler = compiler;
+
+	  if (compiler.noCode()) {
+	    resetEverything();
+	    printMessage("<b>No code to run.<\b>");
+	    return;
+	  }
+
+	  compiler.scanLabels().compile().insertLabelAddressesToMemory();
+
+	  if (exports.error) {
+	    resetEverything();
+	    return true;
+	  }
 
 	  exports.memory = compiler.memory;
 
-	  if (compiler.noCode()) {
-	    printMessage("<b>No code to run.<\b>");
-	    setGuiNoCode();
-	  } else {
-	    setGuiCompileSuccess();
+	  if (exports.debug) {
+	    console.log(exports.memory.toString());
 	  }
+	  setGuiCompileSuccess();
+
 	  exports.labelAddresses = compiler.labelAddresses;
 
 	  exports.display.updateFull();
@@ -35237,12 +36877,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  return;
 
 	  // helper
-	  function setGuiNoCode() {
-	    $("#runButton").prop("disabled", true);
-	    $("#compileButton").prop("disabled", false);
-	    $("#fileSelect").prop("disabled", false);
-	    return;
-	  }
 	  function setGuiCompileSuccess() {
 	    $("#runButton").prop("disabled", false);
 	    $("#compileButton").prop("disabled", true);
@@ -35257,30 +36891,32 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 */
 
 	function hexDump() {
-	  let w = window.open('', 'hexDump', 'width=500,height=300,resizable=yes,scrollbars=yes,toolbar=no,location=no,menubar=no,status=no' );
+	  let w = window.open(
+	    "",
+	    "hexDump",
+	    "width=600,height=300,resizable=yes,scrollbars=yes,toolbar=no,location=no,menubar=no,status=no"
+	  );
 
 	  let html = "<html><head>";
-	  html += "<link href='style.css' rel='stylesheet' type='text/css' />";
+	  html += "<meta charset='utf-8'";
+	  html += "<link href='assets/css/style.css' rel='stylesheet' type='text/css' />";
+	  html += "<link href='assets/css/bootstrap.min.css' rel='stylesheet' type='text/css' />";
 	  html += "<title>hexDump</title></head><body>";
-	  html += "<code>";
-	  let x;
-	  for(x = 0; x < exports.memory.codeLen; x++) {
-	    if ((x & 15) == 0) {
-	      html += "<br/> ";
-	      n = (exports.memory.size + x);
-	      html += fmtToHex$1(getUpperByte((n)));
-	      html += fmtToHex$1(getLowerByte(n));
-	      html += ": ";
-	    }
-	    html += fmtToHex$1(exports.memory.readByte(exports.memory.size + x).value);
-	    if (x & 1) {
-	      html += " ";
-	    }
-	  }
-	  if (x & 1) {
-	    html += "-- [END]";
-	  }
-	  html += "</code></body></html>";
+	  html += "<div class='container'>";
+	  html += "<div class='row d-flex justify-content-center'>";
+	  html += "<div class='col vh-100 overflow-auto'>";
+	  html += "<h3>HexDump</h3>";
+	  html += "<div class='dumpHTML'>";
+
+	  html += exports.memory.dumpHTML();
+	  
+	  html += "-- [END]";
+	  html += "</div>";
+	  html += "</div>";
+	  html += "</div>";
+	  html += "</div>";
+	  html += "<script type='text/javascript' src='assets/js/bootstrap.bundle.min.js'></script>";
+	  html += "</body></html>";
 	  w.document.write(html);
 	  w.document.close();
 	}
@@ -35311,15 +36947,15 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      $("#gotoButton").prop("disabled", false);
 	    }
 	    exports.codeRunning = true;
-	    exports.myInterval = setInterval(
-	      (_) => {multiExecute(32);},
-	    1);
+	    exports.myInterval = setInterval((_) => {
+	      multiExecute();
+	    }, 1);
 	  }
 	}
 
-	function multiExecute(steps) {
-	  if (! exports.debug) {
-	    for(let w = 0; w < steps; w++) {
+	function multiExecute() {
+	  if (!exports.debug) {
+	    for (let w = 0; w < exports.steps; w++) {
 	      executeInstruction();
 	    }
 	  }
@@ -35329,38 +36965,33 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 *  executeInstruction() - Executes one instruction. This is the main part of the CPU emulator.
 	 */
 	function executeInstruction() {
-	  if (! exports.codeRunning) {
+	  if (!exports.codeRunning) {
 	    return;
 	  }
 
 	  let randomByte = Math.floor(Math.random() * 0x100); // 0x100 = 256
-	  exports.memory.writeByte(0xfe, new ByteEntry(randomByte)); // what does this do?
+	  exports.memory.writeByte(0xfe, new ByteEntry(randomByte, 0xfe)); // what does this do?
 
 	  let byteEntry = exports.memory.readByte(exports.reg.PC);
-	  let opCode = byteEntry.value;
-	  let lineNumber = "       ";
-	  if (byteEntry instanceof OpCodeByteEntry) {
-	    lineNumber = " [" + byteEntry.lineNumber.toString().padStart(4, " ") + "]";
-
-	    if (exports.debug) {
-	      highlightCodeLine(byteEntry.lineNumber);
-	    }
-
-
+	  if (exports.debug) {
+	    highlightCodeLine(byteEntry.lineNumber);
 	  }
-
+	  let opCode = byteEntry.value;
+	  let lineNumber =
+	    " [" + byteEntry.lineNumber.toString().padStart(4, " ") + "]";
 
 	  let instruction = instructions[opCode];
-	  let name = exports.instructionCounter.toString().padStart(6, " ")
-	    + "  "
-	    + instruction.name
-	    + "/"
-	    + Command$1.getOpCodeName(opCode)
-	    + lineNumber;
+	  let name =
+	    exports.instructionCounter.toString().padStart(6, " ") +
+	    "  " +
+	    instruction.name +
+	    "/" +
+	    Command.getOpCodeName(opCode) +
+	    lineNumber;
 	  exports.instructionCounter++; //advance instruction counter
 
 	  exports.reg.PC++; //advance programm counter
-	  if (! (byteEntry instanceof OpCodeByteEntry)) {
+	  if (!(byteEntry instanceof OpCodeByteEntry)) {
 	    console.warn("Using normal ByteEntry as OpCodeByteEntry: " + name);
 	  }
 	  let addr = instruction(name);
@@ -35376,20 +37007,20 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    let lineText = line.text;
 	    exports.editor.dispatch({
 	      changes: {
-	        from : line.from,
+	        from: line.from,
 	        to: line.to,
-	        insert: ">>> " + lineText + " <<<"
-	      }
+	        insert: ">>> " + lineText + " <<<",
+	      },
 	    });
 
 	    if (exports.started) {
 	      let lastLine = exports.editor.state.doc.line(exports.lastLineNumber);
 	      exports.editor.dispatch({
 	        changes: {
-	          from : lastLine.from,
+	          from: lastLine.from,
 	          to: lastLine.to,
-	          insert: exports.lastLineText
-	        }
+	          insert: exports.lastLineText,
+	        },
 	      });
 	    } else {
 	      exports.started = true;
@@ -35402,16 +37033,16 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  function isDisplayPixel(addr) {
-	    if ((addr >= 0x200) && (addr <= 0x5ff)) {
+	    if (addr >= 0x200 && addr <= 0x5ff) {
 	      return true;
 	    }
 	    return false;
 	  }
 
-	  function runEnd () {
-	    if ((exports.reg.PC == 0) || (!exports.codeRunning)) {
+	  function runEnd() {
+	    if (exports.reg.PC == 0 || !exports.codeRunning) {
 	      clearInterval(exports.myInterval);
-	      printMessage("Program end at PC=$" + fmtToHex$1(exports.reg.PC - 1));
+	      printMessage("Program end at PC=$" + fmtToHex(exports.reg.PC - 1));
 	      exports.codeRunning = false;
 	      $("#stepButton").prop("disabled", true);
 	      $("#gotoButton").prop("disabled", true);
@@ -35432,8 +37063,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  $(btn).mousedown(repeat);
 	  $(btn).mouseup(clearTimeoutT);
 
-	  function repeat () {
-	    if (! exports.codeRunning) {
+	  function repeat() {
+	    if (!exports.codeRunning) {
 	      return;
 	    }
 	    if (restart) {
@@ -35451,7 +37082,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    exports.debuggeR.updateInfo();
 	  }
 
-	  function clearTimeoutT () {
+	  function clearTimeoutT() {
 	    restart = true;
 	    clearTimeout(timeout);
 	  }
@@ -35469,6 +37100,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	var test; // hack to initialize variables spanning over modules
 
+	exports.compiler = null;
 	exports.labelAddresses;
 	exports.codeRunning = false;
 	exports.myInterval;
@@ -35478,50 +37110,77 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	exports.flags = new Flags();
 	exports.instructionCounter = 0;
 	exports.memory = {
-	  reset : function() {return;},
-	  regSP : 0x0,
+	  reset: function () {
+	    return;
+	  },
+	  regSP: 0x0,
 	};
 	exports.reg = {
-	  X : 0x0, // register/index X
-	  Y : 0x0, // register/index Y
-	  PC : 0x600, // program counter
+	  X: 0x0, // register/index X
+	  Y: 0x0, // register/index Y
+	  PC: 0x600, // program counter
 	};
+
+	exports.error = false;
+	exports.addressLineNumbers = {};
 
 	exports.lastLineText = "";
 	exports.lastLineNumber = 0;
 	exports.started = false;
 
+	exports.allowIllegalOpcode;
+
 	exports.editor = new EditorView({
 	  state: EditorState.create({
-	    extensions: [basicSetup, javascript()]
+	    extensions: [basicSetup, StreamLanguage.define(gas), foldGutter()],
 	  }),
 	});
 
 	$(".code-area").append(exports.editor.dom);
 
-	$("#compileButton").prop("disabled", false);
-	$("#runButton").prop("disabled", true);
+	$("#realTimeDebugCheckbox").click(
+	  exports.debuggeR.toggle.bind(exports.debuggeR)
+	);
+	$("#binaryCheckbox").click(toggleBinaryMode);
+	$("#screen").click(toggleScreenSize);
+	$("#illegalOpCodeCheckbox").click(toggleIllegalOpCode);
+
+	// $("#code").keypress(disableButtons);
+	document.addEventListener("keypress", keyPress, true);
+
+	$("#compileButton").click(compileCode);
+	$("#runButton").click(runBinary);
+	$("#resetButton").click((_) => {
+	  resetEverything();
+	  resetMessageWindow();
+	 });
+	$("#hexDumpButton").click(hexDump);
+	$("#largeModeButton").click(togglePresentationMode);
+	$("#fileSelect").change((event) => Load({ file: event.target.value }));
+	$("#gotoButton").click(gotoAddr);
+
+	$("#realTimeDebugCheckbox").prop("checked", false);
+	$("#binaryCheckbox").prop("checked", false);
+	$("#illegalOpCodeCheckbox").prop("checked", false);
+
+	$("#largeModeButton").prop("disabled", false);
+
 	$("#hexDumpButton").prop("disabled", true);
 	$("#resetButton").prop("disabled", false);
 	$("#stepButton").prop("disabled", true);
 	$("#gotoButton").prop("disabled", true);
-	$("#fileSelect").prop("disabled", false);
-	$("#compileButton").click(compileCode);
-	$("#runButton").click(runBinary);
-	$("#hexDumpButton").click(hexDump);
-	$("#resetButton").click(resetEverything);
-	$("#gotoButton").click(gotoAddr);
-	$("#realTimeDebugCheckbox").click(exports.debuggeR.toggle.bind(exports.debuggeR));
-	$("#binaryCheckbox").click(toggleBinaryMode);
-	$("#screen").click(toggleScreenSize);
-	$("#fileSelect").change((event) => Load({file : event.target.value}));
-	$("#presentationCheckbox").change(togglePresentationMode);
-	$("#code").keypress(disableButtons);
-	document.addEventListener("keypress", keyPress, true);
 
 	debugExecHolding("#stepButton", 600, 1.25);
 
 	resetEverything();
+	resetMessageWindow();
+	let slider = $("#stepsSlider");
+	slider.val(5);
+
+	exports.steps = 2 ** 5;
+	slider.on("input", function () {
+	  exports.steps = 2 ** this.value;
+	});
 
 	exports.test = test;
 

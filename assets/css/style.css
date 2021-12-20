@@ -1,0 +1,251 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  font-smoothing: antialiased;
+
+  text-rendering: optimizeLegibility;
+}
+
+html,
+body {
+  height: 100%;
+
+  margin: 0;
+  padding: 0;
+
+  overflow: hidden;
+}
+
+body {
+  position: relative;
+}
+
+
+input[type="checkbox"] {
+  user-select: none;
+  cursor: pointer;
+}
+
+input[type="checkbox"]:checked {
+  background-color: #000;
+}
+
+button,
+select {
+  outline: 0;
+
+  border: 1px solid #000;
+
+  background-color: #fff;
+}
+
+button:hover {
+  background-color: #000;
+
+  color: #fff;
+}
+
+button[disabled] {
+  border-color: #999;
+
+  color: #999;
+}
+
+button[disabled]:hover {
+  background-color: #fff;
+
+  color: #999;
+}
+
+h1 {
+  padding: 0;
+  margin: 0;
+  margin-right: 10px;
+  margin-left: 10px;
+
+  display: inline;
+
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+
+  line-height: 22px;
+}
+
+body.presentation-mode .code-area {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.dumpHTML {
+  overflow: scroll;
+  white-space: pre;
+  font-family: monospace; 
+}
+
+
+div.screen {
+  background-color: #000;
+  width: auto;
+  height: auto;
+
+  cursor: pointer;
+}
+
+td.screen {
+  padding: 0;
+}
+@media screen and (max-width:576px) {
+  td.screen {
+    width: 3px;
+    height: 3px;
+  }
+}
+@media screen and (min-width:576px) {
+  td.screen {
+    width: 5px;
+    height: 5px;
+  }
+}
+@media screen and (min-width:768px) {
+  td.screen {
+    width: 7px;
+    height: 7px;
+  }
+}
+@media screen and (min-width:992px) {
+  td.screen {
+    width: 7px;
+    height: 7px;
+  }
+}
+@media screen and (min-width:1200px) {
+  td.screen {
+    width: 7px;
+    height: 7px;
+  }
+}
+@media screen and (min-width:1400px) {
+  td.screen {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+.fileSelect {
+  width: 130px;
+}
+
+.cm-editor {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 14px;
+  height: 100%;
+  width: 100%;
+
+  /* border: 0; */
+  /* outline: 0 ; */
+  background: #fff;
+  color: #444;
+}
+
+.debugger-panel {
+  bottom: 20px;
+  right: 20px;
+
+  width: 192px;
+}
+
+.checkboxLabel,
+.debug-info {
+  font-size: 14px;
+}
+
+.debug-info {
+  margin-bottom: 5px;
+  margin-right: 5px;
+  padding: 5px;
+  background-color: #efefef;
+}
+
+body.presentation-mode .debug-info {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.debug-info-label {
+  float: left;
+  font-weight: bold;
+}
+
+.debug-info-content {
+  float: right;
+}
+
+.debug-info::after {
+  content: "";
+
+  display: block;
+
+  clear: both;
+}
+
+.messages-panel {
+  white-space: pre;
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+
+  background-color: #fff;
+}
+
+.info-panel {
+  -ms-flex: 0 0 192px;
+  flex: 0 0 192px;
+}
+
+.h-adjust {
+  height: 50%;
+}
+
+.divDrag {
+  height: 8px;
+  cursor: row-resize;
+  background: grey; 
+}
+
+.contentRow {
+  height: calc(100vh - 56px);
+}
+
+/* Mouse-over effects */
+.slider:hover {
+  opacity: 1; /* Fully shown on mouse-over */
+}
+.slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 7px;
+  border-radius: 3px;  
+  background: #d3d3d3;
+  outline: none;
+  opacity: 0.7;
+  -webkit-transition: .2s;
+  transition: opacity .2s;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%; 
+  background: #000000;
+  cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #000000;
+  cursor: pointer;
+}
