@@ -32,3 +32,11 @@ export function getLowerByte(value) {
 export function getUpperByte(value) {
   return (value >> 8) & 0xff;
 }
+
+export function isNegative(value) {
+  // 0x80 = 128 = 0b1000 0000 means sign bit is set
+  if (value & 0x80) {
+    return true;
+  }
+  return false;
+}

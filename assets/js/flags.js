@@ -1,3 +1,5 @@
+import { isNegative } from "./helper";
+
 class Flag {
   constructor({ set = false } = {}) {
     this.set = set;
@@ -45,14 +47,14 @@ export class Flags {
     this.carry = new Flag();
   }
   clearAll() {
-    this.negative.clear;
-    this.overflow.clear;
-    this.unused.set; // unused is always one according to 6502 specs
-    this.break.clear;
-    this.decimal.clear;
-    this.interruptDisable.clear;
-    this.zero.clear;
-    this.carry.clear;
+    this.negative.clear();
+    this.overflow.clear();
+    this.unused._set(); // unused is always one according to 6502 specs
+    this.break.clear();
+    this.decimal.clear();
+    this.interruptDisable.clear();
+    this.zero.clear();
+    this.carry.clear();
   }
 
   get byte() {
@@ -107,10 +109,6 @@ export class Flags {
     this.carry.setByValue(getBit(byte, 0));
 
     return;
-
-    function getBit(byte, position) {
-      return (byte >> position) & 1;
-    }
   }
 
   toggleZeroAndNegative(value) {
@@ -119,8 +117,7 @@ export class Flags {
     } else {
       this.zero._set();
     }
-    if (value & 0x80) {
-      // 128 = 0b1000 0000 means sign bit is set
+    if (isNegative(value)) {
       this.negative._set();
     } else {
       this.negative.clear();
@@ -158,3 +155,6 @@ Flags.prototype.toString = function () {
     "]";
   console.log(msg);
 };
+export function getBit(byte, position) {
+  return (byte >> position) & 1;
+}

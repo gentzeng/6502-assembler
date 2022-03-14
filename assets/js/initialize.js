@@ -1,4 +1,4 @@
-/*7
+/*
  *
  *  6502 assembler and emulator in Javascript
  *  (C)2006-2010 Stian Soreng - www.6502asm.com
@@ -63,12 +63,12 @@ exports.lastLineNumber = 0;
 exports.started = false;
 
 exports.allowIllegalOpcode;
-
-exports.editor = new EditorView({
-  state: EditorState.create({
-    extensions: [basicSetup, StreamLanguage.define(gas), foldGutter()],
-  }),
-});
+(exports.processorLocked = false),
+  (exports.editor = new EditorView({
+    state: EditorState.create({
+      extensions: [basicSetup, StreamLanguage.define(gas), foldGutter()],
+    }),
+  }));
 
 $(".code-area").append(exports.editor.dom);
 
@@ -89,6 +89,7 @@ $("#resetButton").click((_) => {
   resetMessageWindow();
 });
 $("#hexDumpButton").click(hexDump);
+$("#plainHexDumpButton").click(() => hexDump({ plain: true }));
 $("#largeModeButton").click(togglePresentationMode);
 $("#fileSelect").change((event) => Load({ file: event.target.value }));
 $("#gotoButton").click(gotoAddr);
@@ -100,6 +101,7 @@ $("#illegalOpCodeCheckbox").prop("checked", false);
 $("#largeModeButton").prop("disabled", false);
 
 $("#hexDumpButton").prop("disabled", true);
+$("#plainHexDumpButton").prop("disabled", true);
 $("#resetButton").prop("disabled", false);
 $("#stepButton").prop("disabled", true);
 $("#gotoButton").prop("disabled", true);

@@ -1,5 +1,6 @@
-import { Compiler, Command } from "./compiler";
-import { fmtToHex, getUpperByte, getLowerByte } from "./helper";
+import { Compiler } from "./compiler";
+import { Command } from "./compiler-command";
+import { fmtToHex } from "./helper";
 import { ByteEntry, OpCodeByteEntry } from "./memory";
 
 import { printMessage, resetMessageWindow } from "./message";
@@ -111,6 +112,8 @@ export function resetEverything() {
   $("#fileSelect").prop("disabled", false);
   $("#stepButton").prop("disabled", true);
   $("#gotoButton").prop("disabled", true);
+  $("#hexDumpButton").prop("disabled", true);
+  $("#plainHexDumpButton").prop("disabled", true);
 }
 
 export function compileCode() {
@@ -159,6 +162,7 @@ export function compileCode() {
     $("#compileButton").prop("disabled", true);
     $("#fileSelect").prop("disabled", false);
     $("#hexDumpButton").prop("disabled", false);
+    $("#plainHexDumpButton").prop("disabled", false);
     return;
   }
 }
@@ -167,10 +171,10 @@ export function compileCode() {
  *  hexDump() - Dump binary as hex to new window
  */
 
-export function hexDump() {
+export function hexDump({ plain = false } = {}) {
   let w = window.open(
     "",
-    "hexDump",
+    plain ? "plainHexDump" : "hexDump",
     "width=600,height=300,resizable=yes,scrollbars=yes,toolbar=no,location=no,menubar=no,status=no"
   );
 
@@ -184,10 +188,13 @@ export function hexDump() {
   html += "<div class='container'>";
   html += "<div class='row d-flex justify-content-center'>";
   html += "<div class='col vh-100 overflow-auto'>";
-  html += "<h3>HexDump</h3>";
+  html += "<h3>";
+  html += plain === true ? "PlainHexDump" : "HexDump";
+  html += "</h3>";
   html += "<div class='dumpHTML'>";
 
-  html += exports.memory.dumpHTML();
+  html +=
+    plain === true ? exports.memory.dumpPlainHTML() : exports.memory.dumpHTML();
 
   html += "-- [END]";
   html += "</div>";
@@ -210,6 +217,7 @@ export function runBinary() {
     exports.codeRunning = false;
     $("#runButton").html("Run");
     $("#hexDumpButton").prop("disabled", false);
+    $("#plainHexDumpButton").prop("disabled", false);
     $("#fileSelect").prop("disabled", false);
     if (!exports.debug) {
       exports.debuggeR.disable();
@@ -218,6 +226,7 @@ export function runBinary() {
   } else {
     $("#runButton").html("Stop");
     $("#hexDumpButton").prop("disabled", true);
+    $("#plainHexDumpButton").prop("disabled", true);
     $("#fileSelect").prop("disabled", true);
     if (!exports.debug) {
       $("#stepButton").prop("disabled", !exports.debug);
@@ -245,6 +254,9 @@ function multiExecute() {
  *  executeInstruction() - Executes one instruction. This is the main part of the CPU emulator.
  */
 export function executeInstruction() {
+  if (exports.processorLocked) {
+    return;
+  }
   if (!exports.codeRunning) {
     return;
   }
@@ -329,6 +341,7 @@ export function executeInstruction() {
       $("#runButton").html("Run");
       $("#fileSelect").prop("disabled", false);
       $("#hexDumpButton").prop("disabled", false);
+      $("#plainHexDumpButton").prop("disabled", false);
     }
   }
 }

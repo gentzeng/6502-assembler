@@ -1,5 +1,5 @@
 import { getLowerByte, fmtToHex } from "./helper";
-import { Command } from "./compiler";
+import { Command } from "./compiler-command";
 import { raiseStackEmpty, raiseStackOverflow } from "./message";
 
 export class Memory extends Array {
@@ -25,9 +25,8 @@ export class Memory extends Array {
   // generell memory setter and getter --------------------------------------------------------
   readWord(address) {
     let lowerByteEntry = this.readByte(address);
-    let lowerByte = lowerByteEntry.value;
-    let upperByte = this.readByte(address + 1).value;
-    let word = (upperByte << 8) + lowerByte;
+    let upperByteEntry = this.readByte(address + 1);
+    let word = (upperByteEntry.value << 8) + lowerByteEntry.value;
     return new WordEntry(word, lowerByteEntry.lineNumber);
   }
 
@@ -46,7 +45,10 @@ export class Memory extends Array {
 
     if (!(memoryEntry instanceof LabelEntry)) {
       // for label insertion
-      memoryEntry = memoryEntry.lowerByteEntry; // make sure, this is a byte
+      // handling special educative jmp relative command
+      if (![0x100, 0x101].includes(memoryEntry.value)) {
+        memoryEntry = memoryEntry.lowerByteEntry; // make sure, this is a byte
+      }
     }
 
     return memoryEntry;
@@ -88,12 +90,22 @@ export class Memory extends Array {
     }
     if (!(memoryEntry instanceof LabelEntry)) {
       // for label insertion
-      memoryEntry = memoryEntry.lowerByteEntry;
+      // handling special educative jmp relative command
+      if (![0x100, 0x101].includes(memoryEntry.value)) {
+        memoryEntry = memoryEntry.lowerByteEntry;
+      }
     }
     this[address] = memoryEntry;
   }
 
   // stack setter and getter ------------------------------------------------------------------
+  popWordFromStack() {
+    let lowerByteEntry = this.popByteFromStack();
+    let upperByteEntry = this.popByteFromStack();
+    let word = (upperByteEntry.value << 8) + (lowerByteEntry.value + 1);
+    return new WordEntry(word, lowerByteEntry.lineNumber);
+  }
+
   popByteFromStack() {
     if (this.regSP < 0x100) {
       let addr = this.regSP + 0x100;
@@ -105,14 +117,6 @@ export class Memory extends Array {
       exports.codeRunning = false;
       return 0;
     }
-  }
-
-  popWordFromStack() {
-    let lowerByteEntry = this.popByteFromStack();
-    let lowerByte = lowerByteEntry.value + 1;
-    let upperByte = this.popByteFromStack().value;
-    let word = (upperByte << 8) + lowerByte;
-    return new WordEntry(word, lowerByteEntry.lineNumber);
   }
 
   pushByteToStack(byteEntry) {
@@ -140,6 +144,14 @@ export class Memory extends Array {
         dump += "<br/>";
       }
       dump += "  " + fmtToHex(address) + " : " + memoryEntry.toString();
+    });
+    return dump;
+  }
+  dumpPlainHTML() {
+    let dump = "";
+    this.forEach((memoryEntry, address) => {
+      dump += "<br/>";
+      dump += "  " + fmtToHex(address) + " : " + fmtToHex(memoryEntry.value);
     });
     return dump;
   }

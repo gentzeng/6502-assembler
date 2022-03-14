@@ -16,8 +16,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 */
 	( function( global, factory ) {
 
-		"use strict";
-
 		if ( typeof module === "object" && typeof module.exports === "object" ) {
 
 			// For CommonJS and CommonJS-like environments where a proper `window`
@@ -42,21 +40,13 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	// Pass this if window is not defined yet
 	} )( typeof window !== "undefined" ? window : undefined, function( window, noGlobal ) {
 
-	// Edge <= 12 - 13+, Firefox <=18 - 45+, IE 10 - 11, Safari 5.1 - 9+, iOS 6 - 9.1
-	// throw exceptions when non-strict code (e.g., ASP.NET 4.5) accesses strict mode
-	// arguments.callee.caller (trac-13335). But as of jQuery 3.0 (2016), strict mode should be common
-	// enough that all such attempts are guarded in a try block.
-	"use strict";
-
 	var arr = [];
 
 	var getProto = Object.getPrototypeOf;
 
 	var slice = arr.slice;
 
-	var flat = arr.flat ? function( array ) {
-		return arr.flat.call( array );
-	} : function( array ) {
+	var flat = function( array ) {
 		return arr.concat.apply( [], array );
 	};
 
@@ -21776,38 +21766,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    ignoreEvent() { return false; }
 	}
 
-	const plugin = /*@__PURE__*/ViewPlugin.fromClass(class {
-	    constructor(view) {
-	        this.height = -1;
-	        this.measure = {
-	            read: view => Math.max(0, view.scrollDOM.clientHeight - view.defaultLineHeight),
-	            write: (value, view) => {
-	                if (Math.abs(value - this.height) > 1) {
-	                    this.height = value;
-	                    view.contentDOM.style.paddingBottom = value + "px";
-	                }
-	            }
-	        };
-	        view.requestMeasure(this.measure);
-	    }
-	    update(update) {
-	        if (update.geometryChanged)
-	            update.view.requestMeasure(this.measure);
-	    }
-	});
-	/**
-	Returns a plugin that makes sure the content has a bottom margin
-	equivalent to the height of the editor, minus one line height, so
-	that every line in the document can be scrolled to the top of the
-	editor.
-
-	This is only meaningful when the editor is scrollable, and should
-	not be enabled in editors that take the size of their content.
-	*/
-	function scrollPastEnd() {
-	    return plugin;
-	}
-
 	/**
 	Mark lines that have a cursor on them with the `"cm-activeLine"`
 	DOM class.
@@ -21840,43 +21798,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}, {
 	    decorations: v => v.decorations
 	});
-
-	class Placeholder extends WidgetType {
-	    constructor(content) {
-	        super();
-	        this.content = content;
-	    }
-	    toDOM() {
-	        let wrap = document.createElement("span");
-	        wrap.className = "cm-placeholder";
-	        wrap.style.pointerEvents = "none";
-	        wrap.appendChild(typeof this.content == "string" ? document.createTextNode(this.content) : this.content);
-	        if (typeof this.content == "string")
-	            wrap.setAttribute("aria-label", "placeholder " + this.content);
-	        else
-	            wrap.setAttribute("aria-hidden", "true");
-	        return wrap;
-	    }
-	    ignoreEvent() { return false; }
-	}
-	/**
-	Extension that enables a placeholder—a piece of example content
-	to show when the editor is empty.
-	*/
-	function placeholder(content) {
-	    return ViewPlugin.fromClass(class {
-	        constructor(view) {
-	            this.view = view;
-	            this.placeholder = Decoration.set([Decoration.widget({ widget: new Placeholder(content), side: 1 }).range(0)]);
-	        }
-	        get decorations() { return this.view.state.doc.length ? Decoration.none : this.placeholder; }
-	    }, { decorations: v => v.decorations });
-	}
-
-	/**
-	@internal
-	*/
-	const __test = { HeightMap, HeightOracle, MeasuredHeights, QueryType, ChangedRange, computeOrder, moveVisually };
 
 	const fromHistory = /*@__PURE__*/Annotation.define();
 	/**
@@ -21959,14 +21880,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        })
 	    ];
 	}
-	/**
-	The state field used to store the history data. Should probably
-	only be used when you want to
-	[serialize](https://codemirror.net/6/docs/ref/#state.EditorState.toJSON) or
-	[deserialize](https://codemirror.net/6/docs/ref/#state.EditorState^fromJSON) state objects in a way
-	that preserves history.
-	*/
-	const historyField = historyField_;
 	function cmd(side, selection) {
 	    return function ({ state, dispatch }) {
 	        let historyState = state.field(historyField_, false);
@@ -21997,23 +21910,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Redo a selection change.
 	*/
 	const redoSelection = /*@__PURE__*/cmd(1 /* Undone */, true);
-	function depth(side) {
-	    return function (state) {
-	        let histState = state.field(historyField_, false);
-	        if (!histState)
-	            return 0;
-	        let branch = side == 0 /* Done */ ? histState.done : histState.undone;
-	        return branch.length - (branch.length && !branch[0].changes ? 1 : 0);
-	    };
-	}
-	/**
-	The amount of undoable change events available in a given state.
-	*/
-	const undoDepth = /*@__PURE__*/depth(0 /* Done */);
-	/**
-	The amount of redoable change events available in a given state.
-	*/
-	const redoDepth = /*@__PURE__*/depth(1 /* Undone */);
 	// History events store groups of changes or effects that need to be
 	// undone/redone together.
 	class HistEvent {
@@ -22298,28 +22194,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	/// node, with another tree. This is useful to include trees from
 	/// different languages.
 	NodeProp.mounted = new NodeProp({ perNode: true });
-	/// A mounted tree, which can be [stored](#common.NodeProp^mounted) on
-	/// a tree node to indicate that parts of its content are
-	/// represented by another tree.
-	class MountedTree {
-	    constructor(
-	    /// The inner tree.
-	    tree, 
-	    /// If this is null, this tree replaces the entire node (it will
-	    /// be included in the regular iteration instead of its host
-	    /// node). If not, only the given ranges are considered to be
-	    /// covered by this tree. This is used for trees that are mixed in
-	    /// a way that isn't strictly hierarchical. Such mounted trees are
-	    /// only entered by [`resolveInner`](#common.Tree.resolveInner)
-	    /// and [`enter`](#common.SyntaxNode.enter).
-	    overlay, 
-	    /// The parser used to create this subtree.
-	    parser) {
-	        this.tree = tree;
-	        this.overlay = overlay;
-	        this.parser = parser;
-	    }
-	}
 	const noProps = Object.create(null);
 	/// Each node in a syntax tree has a node type associated with it.
 	class NodeType {
@@ -23483,387 +23357,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    read(from, to) { return this.string.slice(from, to); }
 	}
 
-	/// Create a parse wrapper that, after the inner parse completes,
-	/// scans its tree for mixed language regions with the `nest`
-	/// function, runs the resulting [inner parses](#common.NestedParse),
-	/// and then [mounts](#common.NodeProp^mounted) their results onto the
-	/// tree.
-	///
-	/// The nesting function is passed a cursor to provide context for a
-	/// node, but _should not_ move that cursor, only inspect its
-	/// properties and optionally access its
-	/// [node object](#common.TreeCursor.node).
-	function parseMixed(nest) {
-	    return (parse, input, fragments, ranges) => new MixedParse(parse, nest, input, fragments, ranges);
-	}
-	class InnerParse {
-	    constructor(parser, parse, overlay, target) {
-	        this.parser = parser;
-	        this.parse = parse;
-	        this.overlay = overlay;
-	        this.target = target;
-	    }
-	}
-	class ActiveOverlay {
-	    constructor(parser, predicate, mounts, index, start, target, prev) {
-	        this.parser = parser;
-	        this.predicate = predicate;
-	        this.mounts = mounts;
-	        this.index = index;
-	        this.start = start;
-	        this.target = target;
-	        this.prev = prev;
-	        this.depth = 0;
-	        this.ranges = [];
-	    }
-	}
-	class MixedParse {
-	    constructor(base, nest, input, fragments, ranges) {
-	        this.nest = nest;
-	        this.input = input;
-	        this.fragments = fragments;
-	        this.ranges = ranges;
-	        this.inner = [];
-	        this.innerDone = 0;
-	        this.baseTree = null;
-	        this.stoppedAt = null;
-	        this.baseParse = base;
-	    }
-	    advance() {
-	        if (this.baseParse) {
-	            let done = this.baseParse.advance();
-	            if (!done)
-	                return null;
-	            this.baseParse = null;
-	            this.baseTree = done;
-	            this.startInner();
-	        }
-	        if (this.innerDone == this.inner.length)
-	            return this.baseTree;
-	        let inner = this.inner[this.innerDone], done = inner.parse.advance();
-	        if (done) {
-	            this.innerDone++;
-	            // This is a somewhat dodgy but super helpful hack where we
-	            // patch up nodes created by the inner parse (and thus
-	            // presumably not aliased anywhere else) to hold the information
-	            // about the inner parse.
-	            let props = Object.assign(Object.create(null), inner.target.props);
-	            props[NodeProp.mounted.id] = new MountedTree(done, inner.overlay, inner.parser);
-	            inner.target.props = props;
-	        }
-	        return null;
-	    }
-	    get parsedPos() {
-	        if (this.baseParse)
-	            return 0;
-	        let next = this.inner[this.innerDone];
-	        return next ? next.parse.parsedPos : this.input.length;
-	    }
-	    stopAt(pos) {
-	        this.stoppedAt = pos;
-	        if (this.baseParse)
-	            this.baseParse.stopAt(pos);
-	        else
-	            for (let i = this.innerDone; i < this.inner.length; i++)
-	                this.inner[i].parse.stopAt(pos);
-	    }
-	    startInner() {
-	        let fragmentCursor = new FragmentCursor(this.fragments);
-	        let overlay = null;
-	        let covered = null;
-	        let cursor = new TreeCursor(new TreeNode(this.baseTree, this.ranges[0].from, 0, null), 1 /* Full */);
-	        scan: for (let nest, isCovered;;) {
-	            let enter = true, range;
-	            if (fragmentCursor.hasNode(cursor)) {
-	                if (overlay) {
-	                    let match = overlay.mounts.find(m => m.frag.from <= cursor.from && m.frag.to >= cursor.to && m.mount.overlay);
-	                    if (match)
-	                        for (let r of match.mount.overlay) {
-	                            let from = r.from + match.pos, to = r.to + match.pos;
-	                            if (from >= cursor.from && to <= cursor.to)
-	                                overlay.ranges.push({ from, to });
-	                        }
-	                }
-	                enter = false;
-	            }
-	            else if (covered && (isCovered = checkCover(covered.ranges, cursor.from, cursor.to))) {
-	                enter = isCovered != 2 /* Full */;
-	            }
-	            else if (!cursor.type.isAnonymous && cursor.from < cursor.to && (nest = this.nest(cursor, this.input))) {
-	                if (!cursor.tree)
-	                    materialize(cursor);
-	                let oldMounts = fragmentCursor.findMounts(cursor.from, nest.parser);
-	                if (typeof nest.overlay == "function") {
-	                    overlay = new ActiveOverlay(nest.parser, nest.overlay, oldMounts, this.inner.length, cursor.from, cursor.tree, overlay);
-	                }
-	                else {
-	                    let ranges = punchRanges(this.ranges, nest.overlay || [new Range(cursor.from, cursor.to)]);
-	                    if (ranges.length)
-	                        this.inner.push(new InnerParse(nest.parser, nest.parser.startParse(this.input, enterFragments(oldMounts, ranges), ranges), nest.overlay ? nest.overlay.map(r => new Range(r.from - cursor.from, r.to - cursor.from)) : null, cursor.tree));
-	                    if (!nest.overlay)
-	                        enter = false;
-	                    else if (ranges.length)
-	                        covered = { ranges, depth: 0, prev: covered };
-	                }
-	            }
-	            else if (overlay && (range = overlay.predicate(cursor))) {
-	                if (range === true)
-	                    range = new Range(cursor.from, cursor.to);
-	                if (range.from < range.to)
-	                    overlay.ranges.push(range);
-	            }
-	            if (enter && cursor.firstChild()) {
-	                if (overlay)
-	                    overlay.depth++;
-	                if (covered)
-	                    covered.depth++;
-	            }
-	            else {
-	                for (;;) {
-	                    if (cursor.nextSibling())
-	                        break;
-	                    if (!cursor.parent())
-	                        break scan;
-	                    if (overlay && !--overlay.depth) {
-	                        let ranges = punchRanges(this.ranges, overlay.ranges);
-	                        if (ranges.length)
-	                            this.inner.splice(overlay.index, 0, new InnerParse(overlay.parser, overlay.parser.startParse(this.input, enterFragments(overlay.mounts, ranges), ranges), overlay.ranges.map(r => new Range(r.from - overlay.start, r.to - overlay.start)), overlay.target));
-	                        overlay = overlay.prev;
-	                    }
-	                    if (covered && !--covered.depth)
-	                        covered = covered.prev;
-	                }
-	            }
-	        }
-	    }
-	}
-	function checkCover(covered, from, to) {
-	    for (let range of covered) {
-	        if (range.from >= to)
-	            break;
-	        if (range.to > from)
-	            return range.from <= from && range.to >= to ? 2 /* Full */ : 1 /* Partial */;
-	    }
-	    return 0 /* None */;
-	}
-	// Take a piece of buffer and convert it into a stand-alone
-	// TreeBuffer.
-	function sliceBuf(buf, startI, endI, nodes, positions, off) {
-	    if (startI < endI) {
-	        let from = buf.buffer[startI + 1], to = buf.buffer[endI - 2];
-	        nodes.push(buf.slice(startI, endI, from, to));
-	        positions.push(from - off);
-	    }
-	}
-	// This function takes a node that's in a buffer, and converts it, and
-	// its parent buffer nodes, into a Tree. This is again acting on the
-	// assumption that the trees and buffers have been constructed by the
-	// parse that was ran via the mix parser, and thus aren't shared with
-	// any other code, making violations of the immutability safe.
-	function materialize(cursor) {
-	    let { node } = cursor, depth = 0;
-	    // Scan up to the nearest tree
-	    do {
-	        cursor.parent();
-	        depth++;
-	    } while (!cursor.tree);
-	    // Find the index of the buffer in that tree
-	    let i = 0, base = cursor.tree, off = 0;
-	    for (;; i++) {
-	        off = base.positions[i] + cursor.from;
-	        if (off <= node.from && off + base.children[i].length >= node.to)
-	            break;
-	    }
-	    let buf = base.children[i], b = buf.buffer;
-	    // Split a level in the buffer, putting the nodes before and after
-	    // the child that contains `node` into new buffers.
-	    function split(startI, endI, type, innerOffset) {
-	        let i = startI;
-	        while (b[i + 2] + off <= node.from)
-	            i = b[i + 3];
-	        let children = [], positions = [];
-	        sliceBuf(buf, startI, i, children, positions, innerOffset);
-	        let isTarget = b[i + 1] + off == node.from && b[i + 2] + off == node.to && b[i] == node.type.id;
-	        children.push(isTarget ? node.toTree() : split(i + 4, b[i + 3], buf.set.types[b[i]], b[i + 1]));
-	        positions.push(b[i + 1] - innerOffset);
-	        sliceBuf(buf, b[i + 3], endI, children, positions, innerOffset);
-	        let last = children.length - 1;
-	        return new Tree(type, children, positions, positions[last] + children[last].length);
-	    }
-	    base.children[i] = split(0, b.length, NodeType.none, 0);
-	    // Move the cursor back to the target node
-	    for (let d = 0; d <= depth; d++)
-	        cursor.childAfter(node.from);
-	}
-	class StructureCursor {
-	    constructor(root, offset) {
-	        this.offset = offset;
-	        this.done = false;
-	        this.cursor = root.fullCursor();
-	    }
-	    // Move to the first node (in pre-order) that starts at or after `pos`.
-	    moveTo(pos) {
-	        let { cursor } = this, p = pos - this.offset;
-	        while (!this.done && cursor.from < p) {
-	            if (cursor.to >= pos && cursor.enter(p, 1, false, false)) ;
-	            else if (!cursor.next(false))
-	                this.done = true;
-	        }
-	    }
-	    hasNode(cursor) {
-	        this.moveTo(cursor.from);
-	        if (!this.done && this.cursor.from + this.offset == cursor.from && this.cursor.tree) {
-	            for (let tree = this.cursor.tree;;) {
-	                if (tree == cursor.tree)
-	                    return true;
-	                if (tree.children.length && tree.positions[0] == 0 && tree.children[0] instanceof Tree)
-	                    tree = tree.children[0];
-	                else
-	                    break;
-	            }
-	        }
-	        return false;
-	    }
-	}
-	class FragmentCursor {
-	    constructor(fragments) {
-	        this.fragments = fragments;
-	        this.fragI = 0;
-	        if (fragments.length) {
-	            let first = this.curFrag = fragments[0];
-	            this.inner = new StructureCursor(first.tree, -first.offset);
-	        }
-	        else {
-	            this.curFrag = this.inner = null;
-	        }
-	    }
-	    hasNode(node) {
-	        while (this.curFrag && node.from >= this.curFrag.to)
-	            this.nextFrag();
-	        return this.curFrag && this.curFrag.from <= node.from && this.curFrag.to >= node.to && this.inner.hasNode(node);
-	    }
-	    nextFrag() {
-	        this.fragI++;
-	        if (this.fragI == this.fragments.length) {
-	            this.curFrag = this.inner = null;
-	        }
-	        else {
-	            let frag = this.curFrag = this.fragments[this.fragI];
-	            this.inner = new StructureCursor(frag.tree, -frag.offset);
-	        }
-	    }
-	    findMounts(pos, parser) {
-	        var _a;
-	        let result = [];
-	        if (this.inner) {
-	            this.inner.cursor.moveTo(pos, 1);
-	            for (let pos = this.inner.cursor.node; pos; pos = pos.parent) {
-	                let mount = (_a = pos.tree) === null || _a === void 0 ? void 0 : _a.prop(NodeProp.mounted);
-	                if (mount && mount.parser == parser) {
-	                    for (let i = this.fragI; i < this.fragments.length; i++) {
-	                        let frag = this.fragments[i];
-	                        if (frag.from >= pos.to)
-	                            break;
-	                        if (frag.tree == this.curFrag.tree)
-	                            result.push({
-	                                frag,
-	                                pos: pos.from - frag.offset,
-	                                mount
-	                            });
-	                    }
-	                }
-	            }
-	        }
-	        return result;
-	    }
-	}
-	function punchRanges(outer, ranges) {
-	    let copy = null, current = ranges;
-	    for (let i = 1, j = 0; i < outer.length; i++) {
-	        let gapFrom = outer[i - 1].to, gapTo = outer[i].from;
-	        for (; j < current.length; j++) {
-	            let r = current[j];
-	            if (r.from >= gapTo)
-	                break;
-	            if (r.to <= gapFrom)
-	                continue;
-	            if (!copy)
-	                current = copy = ranges.slice();
-	            if (r.from < gapFrom) {
-	                copy[j] = new Range(r.from, gapFrom);
-	                if (r.to > gapTo)
-	                    copy.splice(j + 1, 0, new Range(gapTo, r.to));
-	            }
-	            else if (r.to > gapTo) {
-	                copy[j--] = new Range(gapTo, r.to);
-	            }
-	            else {
-	                copy.splice(j--, 1);
-	            }
-	        }
-	    }
-	    return current;
-	}
-	function findCoverChanges(a, b, from, to) {
-	    let iA = 0, iB = 0, inA = false, inB = false, pos = -1e9;
-	    let result = [];
-	    for (;;) {
-	        let nextA = iA == a.length ? 1e9 : inA ? a[iA].to : a[iA].from;
-	        let nextB = iB == b.length ? 1e9 : inB ? b[iB].to : b[iB].from;
-	        if (inA != inB) {
-	            let start = Math.max(pos, from), end = Math.min(nextA, nextB, to);
-	            if (start < end)
-	                result.push(new Range(start, end));
-	        }
-	        pos = Math.min(nextA, nextB);
-	        if (pos == 1e9)
-	            break;
-	        if (nextA == pos) {
-	            if (!inA)
-	                inA = true;
-	            else {
-	                inA = false;
-	                iA++;
-	            }
-	        }
-	        if (nextB == pos) {
-	            if (!inB)
-	                inB = true;
-	            else {
-	                inB = false;
-	                iB++;
-	            }
-	        }
-	    }
-	    return result;
-	}
-	// Given a number of fragments for the outer tree, and a set of ranges
-	// to parse, find fragments for inner trees mounted around those
-	// ranges, if any.
-	function enterFragments(mounts, ranges) {
-	    let result = [];
-	    for (let { pos, mount, frag } of mounts) {
-	        let startPos = pos + (mount.overlay ? mount.overlay[0].from : 0), endPos = startPos + mount.tree.length;
-	        let from = Math.max(frag.from, startPos), to = Math.min(frag.to, endPos);
-	        if (mount.overlay) {
-	            let overlay = mount.overlay.map(r => new Range(r.from + pos, r.to + pos));
-	            let changes = findCoverChanges(ranges, overlay, from, to);
-	            for (let i = 0, pos = from;; i++) {
-	                let last = i == changes.length, end = last ? to : changes[i].from;
-	                if (end > pos)
-	                    result.push(new TreeFragment(pos, end, mount.tree, -startPos, frag.from >= pos, frag.to <= end));
-	                if (last)
-	                    break;
-	                pos = changes[i].to;
-	            }
-	        }
-	        else {
-	            result.push(new TreeFragment(from, to, mount.tree, -startPos, frag.from >= startPos, frag.to <= endPos));
-	        }
-	    }
-	    return result;
-	}
-
 	/**
 	Node prop stored in a grammar's top syntax node to provide the
 	facet that stores language data for that language.
@@ -23992,34 +23485,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return facet;
 	}
 	/**
-	A subclass of [`Language`](https://codemirror.net/6/docs/ref/#language.Language) for use with Lezer
-	[LR parsers](https://lezer.codemirror.net/docs/ref#lr.LRParser)
-	parsers.
-	*/
-	class LRLanguage extends Language {
-	    constructor(data, parser) {
-	        super(data, parser, parser.topNode);
-	        this.parser = parser;
-	    }
-	    /**
-	    Define a language from a parser.
-	    */
-	    static define(spec) {
-	        let data = defineLanguageFacet(spec.languageData);
-	        return new LRLanguage(data, spec.parser.configure({
-	            props: [languageDataProp.add(type => type.isTop ? data : undefined)]
-	        }));
-	    }
-	    /**
-	    Create a new instance of this language with a reconfigured
-	    version of its parser.
-	    */
-	    configure(options) {
-	        return new LRLanguage(this.data, this.parser.configure(options));
-	    }
-	    get allowsNesting() { return this.parser.wrappers.length > 0; } // FIXME
-	}
-	/**
 	Get the syntax tree for a state, which is the current (possibly
 	incomplete) parse tree of active [language](https://codemirror.net/6/docs/ref/#language.Language),
 	or the empty tree if there is no language available.
@@ -24027,16 +23492,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	function syntaxTree(state) {
 	    let field = state.field(Language.state, false);
 	    return field ? field.tree : Tree.empty;
-	}
-	/**
-	Try to get a parse tree that spans at least up to `upto`. The
-	method will do at most `timeout` milliseconds of work to parse
-	up to that point if the tree isn't already available.
-	*/
-	function ensureSyntaxTree(state, upto, timeout = 50) {
-	    var _a;
-	    let parse = (_a = state.field(Language.state, false)) === null || _a === void 0 ? void 0 : _a.context;
-	    return !parse ? null : parse.treeLen >= upto || parse.work(timeout, upto) ? parse.tree : null;
 	}
 	// Lezer-style Input object for a Text document.
 	class DocInput {
@@ -24416,124 +23871,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    combine(languages) { return languages.length ? languages[0] : null; },
 	    enables: [Language.state, parseWorker]
 	});
-	/**
-	This class bundles a [language object](https://codemirror.net/6/docs/ref/#language.Language) with an
-	optional set of supporting extensions. Language packages are
-	encouraged to export a function that optionally takes a
-	configuration object and returns a `LanguageSupport` instance, as
-	the main way for client code to use the package.
-	*/
-	class LanguageSupport {
-	    /**
-	    Create a support object.
-	    */
-	    constructor(
-	    /**
-	    The language object.
-	    */
-	    language, 
-	    /**
-	    An optional set of supporting extensions. When nesting a
-	    language in another language, the outer language is encouraged
-	    to include the supporting extensions for its inner languages
-	    in its own set of support extensions.
-	    */
-	    support = []) {
-	        this.language = language;
-	        this.support = support;
-	        this.extension = [language, support];
-	    }
-	}
-	/**
-	Language descriptions are used to store metadata about languages
-	and to dynamically load them. Their main role is finding the
-	appropriate language for a filename or dynamically loading nested
-	parsers.
-	*/
-	class LanguageDescription {
-	    constructor(
-	    /**
-	    The name of this language.
-	    */
-	    name, 
-	    /**
-	    Alternative names for the mode (lowercased, includes `this.name`).
-	    */
-	    alias, 
-	    /**
-	    File extensions associated with this language.
-	    */
-	    extensions, 
-	    /**
-	    Optional filename pattern that should be associated with this
-	    language.
-	    */
-	    filename, loadFunc) {
-	        this.name = name;
-	        this.alias = alias;
-	        this.extensions = extensions;
-	        this.filename = filename;
-	        this.loadFunc = loadFunc;
-	        /**
-	        If the language has been loaded, this will hold its value.
-	        */
-	        this.support = undefined;
-	        this.loading = null;
-	    }
-	    /**
-	    Start loading the the language. Will return a promise that
-	    resolves to a [`LanguageSupport`](https://codemirror.net/6/docs/ref/#language.LanguageSupport)
-	    object when the language successfully loads.
-	    */
-	    load() {
-	        return this.loading || (this.loading = this.loadFunc().then(support => this.support = support, err => { this.loading = null; throw err; }));
-	    }
-	    /**
-	    Create a language description.
-	    */
-	    static of(spec) {
-	        return new LanguageDescription(spec.name, (spec.alias || []).concat(spec.name).map(s => s.toLowerCase()), spec.extensions || [], spec.filename, spec.load);
-	    }
-	    /**
-	    Look for a language in the given array of descriptions that
-	    matches the filename. Will first match
-	    [`filename`](https://codemirror.net/6/docs/ref/#language.LanguageDescription.filename) patterns,
-	    and then [extensions](https://codemirror.net/6/docs/ref/#language.LanguageDescription.extensions),
-	    and return the first language that matches.
-	    */
-	    static matchFilename(descs, filename) {
-	        for (let d of descs)
-	            if (d.filename && d.filename.test(filename))
-	                return d;
-	        let ext = /\.([^.]+)$/.exec(filename);
-	        if (ext)
-	            for (let d of descs)
-	                if (d.extensions.indexOf(ext[1]) > -1)
-	                    return d;
-	        return null;
-	    }
-	    /**
-	    Look for a language whose name or alias matches the the given
-	    name (case-insensitively). If `fuzzy` is true, and no direct
-	    matchs is found, this'll also search for a language whose name
-	    or alias occurs in the string (for names shorter than three
-	    characters, only when surrounded by non-word characters).
-	    */
-	    static matchLanguageName(descs, name, fuzzy = true) {
-	        name = name.toLowerCase();
-	        for (let d of descs)
-	            if (d.alias.some(a => a == name))
-	                return d;
-	        if (fuzzy)
-	            for (let d of descs)
-	                for (let a of d.alias) {
-	                    let found = name.indexOf(a);
-	                    if (found > -1 && (a.length > 2 || !/\w/.test(name[found - 1]) && !/\w/.test(name[found + a.length])))
-	                        return d;
-	                }
-	        return null;
-	    }
-	}
 
 	/**
 	Facet that defines a way to provide a function that computes the
@@ -24812,20 +24149,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        pos = next.to;
 	    }
 	}
-	/**
-	An indentation strategy for delimited (usually bracketed) nodes.
-	Will, by default, indent one unit more than the parent's base
-	indent unless the line starts with a closing token. When `align`
-	is true and there are non-skipped nodes on the node's opening
-	line, the content of the node will be aligned with the end of the
-	opening node, like this:
-
-	    foo(bar,
-	        baz)
-	*/
-	function delimitedIndent({ closing, align = true, units = 1 }) {
-	    return (context) => delimitedStrategy(context, align, units, closing);
-	}
 	function delimitedStrategy(context, align, units, closing, closedAt) {
 	    let after = context.textAfter, space = after.match(/^\s*/)[0].length;
 	    let closed = closing && after.slice(space, space + closing.length) == closing || closedAt == context.pos + space;
@@ -24833,25 +24156,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    if (aligned)
 	        return closed ? context.column(aligned.from) : context.column(aligned.to);
 	    return context.baseIndent + (closed ? 0 : context.unit * units);
-	}
-	/**
-	An indentation strategy that aligns a node's content to its base
-	indentation.
-	*/
-	const flatIndent = (context) => context.baseIndent;
-	/**
-	Creates an indentation strategy that, by default, indents
-	continued lines one unit more than the node's base indentation.
-	You can provide `except` to prevent indentation of lines that
-	match a pattern (for example `/^else\b/` in `if`/`else`
-	constructs), and you can change the amount of units used with the
-	`units` option.
-	*/
-	function continuedIndent({ except, units = 1 } = {}) {
-	    return (context) => {
-	        let matchExcept = except && except.test(context.textAfter);
-	        return context.baseIndent + (matchExcept ? 0 : units * context.unit);
-	    };
 	}
 	const DontIndentBeyond = 200;
 	/**
@@ -24912,15 +24216,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	when it is.
 	*/
 	const foldNodeProp = /*@__PURE__*/new NodeProp();
-	/**
-	[Fold](https://codemirror.net/6/docs/ref/#language.foldNodeProp) function that folds everything but
-	the first and the last child of a syntax node. Useful for nodes
-	that start and end with delimiters.
-	*/
-	function foldInside$1(node) {
-	    let first = node.firstChild, last = node.lastChild;
-	    return first && first.to < last.from ? { from: first.to, to: last.type.isError ? node.to : last.from } : null;
-	}
 	function syntaxFolding(state, start, end) {
 	    let tree = syntaxTree(state);
 	    if (tree.length == 0)
@@ -25426,13 +24721,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    },
 	    provide: f => EditorView.decorations.from(f)
 	});
-	/**
-	Get a [range set](https://codemirror.net/6/docs/ref/#rangeset.RangeSet) containing the folded ranges
-	in the given state.
-	*/
-	function foldedRanges(state) {
-	    return state.field(foldState, false) || RangeSet.empty;
-	}
 	function foldInside(state, from, to) {
 	    var _a;
 	    let found = null;
@@ -25822,14 +25110,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Move the selection one character to the right.
 	*/
 	const cursorCharRight = view => cursorByChar(view, view.textDirection == Direction.LTR);
-	/**
-	Move the selection one character forward.
-	*/
-	const cursorCharForward = view => cursorByChar(view, true);
-	/**
-	Move the selection one character backward.
-	*/
-	const cursorCharBackward = view => cursorByChar(view, false);
 	function cursorByGroup(view, forward) {
 	    return moveSel(view, range => range.empty ? view.moveByGroup(range, forward) : rangeEnd(range, forward));
 	}
@@ -25842,63 +25122,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Move the selection one group to the right.
 	*/
 	const cursorGroupRight = view => cursorByGroup(view, view.textDirection == Direction.LTR);
-	/**
-	Move the selection one group forward.
-	*/
-	const cursorGroupForward = view => cursorByGroup(view, true);
-	/**
-	Move the selection one group backward.
-	*/
-	const cursorGroupBackward = view => cursorByGroup(view, false);
-	function moveBySubword(view, range, forward) {
-	    let categorize = view.state.charCategorizer(range.from);
-	    return view.moveByChar(range, forward, start => {
-	        let cat = CharCategory.Space, pos = range.from;
-	        let done = false, sawUpper = false, sawLower = false;
-	        let step = (next) => {
-	            if (done)
-	                return false;
-	            pos += forward ? next.length : -next.length;
-	            let nextCat = categorize(next), ahead;
-	            if (cat == CharCategory.Space)
-	                cat = nextCat;
-	            if (cat != nextCat)
-	                return false;
-	            if (cat == CharCategory.Word) {
-	                if (next.toLowerCase() == next) {
-	                    if (!forward && sawUpper)
-	                        return false;
-	                    sawLower = true;
-	                }
-	                else if (sawLower) {
-	                    if (forward)
-	                        return false;
-	                    done = true;
-	                }
-	                else {
-	                    if (sawUpper && forward && categorize(ahead = view.state.sliceDoc(pos, pos + 1)) == CharCategory.Word &&
-	                        ahead.toLowerCase() == ahead)
-	                        return false;
-	                    sawUpper = true;
-	                }
-	            }
-	            return true;
-	        };
-	        step(start);
-	        return step;
-	    });
-	}
-	function cursorBySubword(view, forward) {
-	    return moveSel(view, range => range.empty ? moveBySubword(view, range, forward) : rangeEnd(range, forward));
-	}
-	/**
-	Move the selection one group or camel-case subword forward.
-	*/
-	const cursorSubwordForward = view => cursorBySubword(view, true);
-	/**
-	Move the selection one group or camel-case subword backward.
-	*/
-	const cursorSubwordBackward = view => cursorBySubword(view, false);
 	function interestingNode(state, node, bracketProp) {
 	    if (node.type.prop(bracketProp))
 	        return true;
@@ -26014,11 +25237,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	on, if any.
 	*/
 	const cursorMatchingBracket = ({ state, dispatch }) => toMatchingBracket(state, dispatch, false);
-	/**
-	Extend the selection to the bracket matching the one the selection
-	head is currently on, if any.
-	*/
-	const selectMatchingBracket = ({ state, dispatch }) => toMatchingBracket(state, dispatch, true);
 	function extendSel(view, how) {
 	    let selection = updateSel(view.state.selection, range => {
 	        let head = how(range);
@@ -26041,14 +25259,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Move the selection head one character to the right.
 	*/
 	const selectCharRight = view => selectByChar(view, view.textDirection == Direction.LTR);
-	/**
-	Move the selection head one character forward.
-	*/
-	const selectCharForward = view => selectByChar(view, true);
-	/**
-	Move the selection head one character backward.
-	*/
-	const selectCharBackward = view => selectByChar(view, false);
 	function selectByGroup(view, forward) {
 	    return extendSel(view, range => view.moveByGroup(range, forward));
 	}
@@ -26061,25 +25271,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	Move the selection head one group to the right.
 	*/
 	const selectGroupRight = view => selectByGroup(view, view.textDirection == Direction.LTR);
-	/**
-	Move the selection head one group forward.
-	*/
-	const selectGroupForward = view => selectByGroup(view, true);
-	/**
-	Move the selection head one group backward.
-	*/
-	const selectGroupBackward = view => selectByGroup(view, false);
-	function selectBySubword(view, forward) {
-	    return extendSel(view, range => moveBySubword(view, range, forward));
-	}
-	/**
-	Move the selection head one group or camel-case subword forward.
-	*/
-	const selectSubwordForward = view => selectBySubword(view, true);
-	/**
-	Move the selection head one group or subword backward.
-	*/
-	const selectSubwordBackward = view => selectBySubword(view, false);
 	/**
 	Move the selection head over the next syntactic element to the left.
 	*/
@@ -26311,34 +25502,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return skipAtomic(view, pos > lineStart ? lineStart : Math.max(0, pos - 1), false);
 	});
 	/**
-	Delete all whitespace directly before a line end from the
-	document.
-	*/
-	const deleteTrailingWhitespace = ({ state, dispatch }) => {
-	    if (state.readOnly)
-	        return false;
-	    let changes = [];
-	    for (let pos = 0, prev = "", iter = state.doc.iter();;) {
-	        iter.next();
-	        if (iter.lineBreak || iter.done) {
-	            let trailing = prev.search(/\s+$/);
-	            if (trailing > -1)
-	                changes.push({ from: pos - (prev.length - trailing), to: pos });
-	            if (iter.done)
-	                break;
-	            prev = "";
-	        }
-	        else {
-	            prev = iter.value;
-	        }
-	        pos += iter.value.length;
-	    }
-	    if (!changes.length)
-	        return false;
-	    dispatch(state.update({ changes, userEvent: "delete" }));
-	    return true;
-	};
-	/**
 	Replace each selection range with a line break, leaving the cursor
 	on the line before the break.
 	*/
@@ -26464,13 +25627,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }));
 	    let selection = updateSel(state.selection, range => view.moveVertically(range, true)).map(changes);
 	    view.dispatch({ changes, selection, scrollIntoView: true, userEvent: "delete.line" });
-	    return true;
-	};
-	/**
-	Replace the selection with a newline.
-	*/
-	const insertNewline = ({ state, dispatch }) => {
-	    dispatch(state.update(state.replaceSelection(state.lineBreak), { scrollIntoView: true, userEvent: "input" }));
 	    return true;
 	};
 	function isBetweenBrackets(state, pos) {
@@ -26601,17 +25757,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	            keep++;
 	        changes.push({ from: line.from + keep, to: line.from + space.length, insert: insert.slice(keep) });
 	    }), { userEvent: "delete.dedent" }));
-	    return true;
-	};
-	/**
-	Insert a tab character at the cursor or, if something is selected,
-	use [`indentMore`](https://codemirror.net/6/docs/ref/#commands.indentMore) to indent the entire
-	selection.
-	*/
-	const insertTab = ({ state, dispatch }) => {
-	    if (state.selection.ranges.some(r => !r.empty))
-	        return indentMore({ state, dispatch });
-	    dispatch(state.update(state.replaceSelection("\t"), { scrollIntoView: true, userEvent: "input" }));
 	    return true;
 	};
 	/**
@@ -26751,13 +25896,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    { key: "Shift-Mod-k", run: deleteLine },
 	    { key: "Shift-Mod-\\", run: cursorMatchingBracket }
 	].concat(standardKeymap);
-	/**
-	A binding that binds Tab to [`indentMore`](https://codemirror.net/6/docs/ref/#commands.indentMore) and
-	Shift-Tab to [`indentLess`](https://codemirror.net/6/docs/ref/#commands.indentLess).
-	Please see the [Tab example](../../examples/tab/) before using
-	this.
-	*/
-	const indentWithTab = { key: "Tab", run: indentMore, shift: indentLess };
 
 	const defaults = {
 	    brackets: ["(", "[", "{", "'", '"'],
@@ -26985,12 +26123,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	});
 	/**
-	Configures the panel-managing extension.
-	*/
-	function panels(config) {
-	    return config ? [panelConfig.of(config)] : [];
-	}
-	/**
 	Get the active panel created by the given constructor, if any.
 	This can be useful when you need access to your panels' DOM
 	structure.
@@ -27184,8 +26316,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	function add$1(elt, child) {
 	  if (typeof child == "string") {
 	    elt.appendChild(document.createTextNode(child));
-	  } else if (child == null) {
-	  } else if (child.nodeType != null) {
+	  } else if (child == null) ; else if (child.nodeType != null) {
 	    elt.appendChild(child);
 	  } else if (Array.isArray(child)) {
 	    for (var i = 0; i < child.length; i++) add$1(elt, child[i]);
@@ -27715,12 +26846,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        };
 	    }
 	});
-	/**
-	Configure the behavior of the search extension.
-	*/
-	function searchConfig(config) {
-	    return searchConfigFacet.of(config);
-	}
 	class Query {
 	    constructor(search, replace, caseInsensitive) {
 	        this.search = search;
@@ -28254,12 +27379,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        return { shouldMeasure: true };
 	    }
 	}
-	/**
-	Return an extension that configures tooltip behavior.
-	*/
-	function tooltips(config = {}) {
-	    return tooltipConfig.of(config);
-	}
 	const tooltipConfig = /*@__PURE__*/Facet.define({
 	    combine: values => {
 	        var _a, _b;
@@ -28768,30 +27887,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return (context) => {
 	        let token = context.matchBefore(match);
 	        return token || context.explicit ? { from: token ? token.from : context.pos, options, span } : null;
-	    };
-	}
-	/**
-	Wrap the given completion source so that it will only fire when the
-	cursor is in a syntax node with one of the given names.
-	*/
-	function ifIn(nodes, source) {
-	    return (context) => {
-	        for (let pos = syntaxTree(context.state).resolveInner(context.pos, -1); pos; pos = pos.parent)
-	            if (nodes.indexOf(pos.name) > -1)
-	                return source(context);
-	        return null;
-	    };
-	}
-	/**
-	Wrap the given completion source so that it will not fire when the
-	cursor is in a syntax node with one of the given names.
-	*/
-	function ifNotIn(nodes, source) {
-	    return (context) => {
-	        for (let pos = syntaxTree(context.state).resolveInner(context.pos, -1); pos; pos = pos.parent)
-	            if (nodes.indexOf(pos.name) > -1)
-	                return null;
-	        return source(context);
 	    };
 	}
 	class Option {
@@ -29720,309 +28815,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	});
 
-	class FieldPos {
-	    constructor(field, line, from, to) {
-	        this.field = field;
-	        this.line = line;
-	        this.from = from;
-	        this.to = to;
-	    }
-	}
-	class FieldRange {
-	    constructor(field, from, to) {
-	        this.field = field;
-	        this.from = from;
-	        this.to = to;
-	    }
-	    map(changes) {
-	        return new FieldRange(this.field, changes.mapPos(this.from, -1), changes.mapPos(this.to, 1));
-	    }
-	}
-	class Snippet {
-	    constructor(lines, fieldPositions) {
-	        this.lines = lines;
-	        this.fieldPositions = fieldPositions;
-	    }
-	    instantiate(state, pos) {
-	        let text = [], lineStart = [pos];
-	        let lineObj = state.doc.lineAt(pos), baseIndent = /^\s*/.exec(lineObj.text)[0];
-	        for (let line of this.lines) {
-	            if (text.length) {
-	                let indent = baseIndent, tabs = /^\t*/.exec(line)[0].length;
-	                for (let i = 0; i < tabs; i++)
-	                    indent += state.facet(indentUnit);
-	                lineStart.push(pos + indent.length - tabs);
-	                line = indent + line.slice(tabs);
-	            }
-	            text.push(line);
-	            pos += line.length + 1;
-	        }
-	        let ranges = this.fieldPositions.map(pos => new FieldRange(pos.field, lineStart[pos.line] + pos.from, lineStart[pos.line] + pos.to));
-	        return { text, ranges };
-	    }
-	    static parse(template) {
-	        let fields = [];
-	        let lines = [], positions = [], m;
-	        for (let line of template.split(/\r\n?|\n/)) {
-	            while (m = /[#$]\{(?:(\d+)(?::([^}]*))?|([^}]*))\}/.exec(line)) {
-	                let seq = m[1] ? +m[1] : null, name = m[2] || m[3], found = -1;
-	                for (let i = 0; i < fields.length; i++) {
-	                    if (seq != null ? fields[i].seq == seq : name ? fields[i].name == name : false)
-	                        found = i;
-	                }
-	                if (found < 0) {
-	                    let i = 0;
-	                    while (i < fields.length && (seq == null || (fields[i].seq != null && fields[i].seq < seq)))
-	                        i++;
-	                    fields.splice(i, 0, { seq, name: name || null });
-	                    found = i;
-	                    for (let pos of positions)
-	                        if (pos.field >= found)
-	                            pos.field++;
-	                }
-	                positions.push(new FieldPos(found, lines.length, m.index, m.index + name.length));
-	                line = line.slice(0, m.index) + name + line.slice(m.index + m[0].length);
-	            }
-	            lines.push(line);
-	        }
-	        return new Snippet(lines, positions);
-	    }
-	}
-	let fieldMarker = /*@__PURE__*/Decoration.widget({ widget: /*@__PURE__*/new class extends WidgetType {
-	        toDOM() {
-	            let span = document.createElement("span");
-	            span.className = "cm-snippetFieldPosition";
-	            return span;
-	        }
-	        ignoreEvent() { return false; }
-	    } });
-	let fieldRange = /*@__PURE__*/Decoration.mark({ class: "cm-snippetField" });
-	class ActiveSnippet {
-	    constructor(ranges, active) {
-	        this.ranges = ranges;
-	        this.active = active;
-	        this.deco = Decoration.set(ranges.map(r => (r.from == r.to ? fieldMarker : fieldRange).range(r.from, r.to)));
-	    }
-	    map(changes) {
-	        return new ActiveSnippet(this.ranges.map(r => r.map(changes)), this.active);
-	    }
-	    selectionInsideField(sel) {
-	        return sel.ranges.every(range => this.ranges.some(r => r.field == this.active && r.from <= range.from && r.to >= range.to));
-	    }
-	}
-	const setActive = /*@__PURE__*/StateEffect.define({
-	    map(value, changes) { return value && value.map(changes); }
-	});
-	const moveToField = /*@__PURE__*/StateEffect.define();
-	const snippetState = /*@__PURE__*/StateField.define({
-	    create() { return null; },
-	    update(value, tr) {
-	        for (let effect of tr.effects) {
-	            if (effect.is(setActive))
-	                return effect.value;
-	            if (effect.is(moveToField) && value)
-	                return new ActiveSnippet(value.ranges, effect.value);
-	        }
-	        if (value && tr.docChanged)
-	            value = value.map(tr.changes);
-	        if (value && tr.selection && !value.selectionInsideField(tr.selection))
-	            value = null;
-	        return value;
-	    },
-	    provide: f => EditorView.decorations.from(f, val => val ? val.deco : Decoration.none)
-	});
-	function fieldSelection(ranges, field) {
-	    return EditorSelection.create(ranges.filter(r => r.field == field).map(r => EditorSelection.range(r.from, r.to)));
-	}
-	/**
-	Convert a snippet template to a function that can apply it.
-	Snippets are written using syntax like this:
-
-	    "for (let ${index} = 0; ${index} < ${end}; ${index}++) {\n\t${}\n}"
-
-	Each `${}` placeholder (you may also use `#{}`) indicates a field
-	that the user can fill in. Its name, if any, will be the default
-	content for the field.
-
-	When the snippet is activated by calling the returned function,
-	the code is inserted at the given position. Newlines in the
-	template are indented by the indentation of the start line, plus
-	one [indent unit](https://codemirror.net/6/docs/ref/#language.indentUnit) per tab character after
-	the newline.
-
-	On activation, (all instances of) the first field are selected.
-	The user can move between fields with Tab and Shift-Tab as long as
-	the fields are active. Moving to the last field or moving the
-	cursor out of the current field deactivates the fields.
-
-	The order of fields defaults to textual order, but you can add
-	numbers to placeholders (`${1}` or `${1:defaultText}`) to provide
-	a custom order.
-	*/
-	function snippet(template) {
-	    let snippet = Snippet.parse(template);
-	    return (editor, _completion, from, to) => {
-	        let { text, ranges } = snippet.instantiate(editor.state, from);
-	        let spec = { changes: { from, to, insert: Text.of(text) } };
-	        if (ranges.length)
-	            spec.selection = fieldSelection(ranges, 0);
-	        if (ranges.length > 1) {
-	            let active = new ActiveSnippet(ranges, 0);
-	            let effects = spec.effects = [setActive.of(active)];
-	            if (editor.state.field(snippetState, false) === undefined)
-	                effects.push(StateEffect.appendConfig.of([snippetState.init(() => active), addSnippetKeymap,
-	                    snippetPointerHandler, baseTheme$1]));
-	        }
-	        editor.dispatch(editor.state.update(spec));
-	    };
-	}
-	function moveField(dir) {
-	    return ({ state, dispatch }) => {
-	        let active = state.field(snippetState, false);
-	        if (!active || dir < 0 && active.active == 0)
-	            return false;
-	        let next = active.active + dir, last = dir > 0 && !active.ranges.some(r => r.field == next + dir);
-	        dispatch(state.update({
-	            selection: fieldSelection(active.ranges, next),
-	            effects: setActive.of(last ? null : new ActiveSnippet(active.ranges, next))
-	        }));
-	        return true;
-	    };
-	}
-	/**
-	A command that clears the active snippet, if any.
-	*/
-	const clearSnippet = ({ state, dispatch }) => {
-	    let active = state.field(snippetState, false);
-	    if (!active)
-	        return false;
-	    dispatch(state.update({ effects: setActive.of(null) }));
-	    return true;
-	};
-	/**
-	Move to the next snippet field, if available.
-	*/
-	const nextSnippetField = /*@__PURE__*/moveField(1);
-	/**
-	Move to the previous snippet field, if available.
-	*/
-	const prevSnippetField = /*@__PURE__*/moveField(-1);
-	const defaultSnippetKeymap = [
-	    { key: "Tab", run: nextSnippetField, shift: prevSnippetField },
-	    { key: "Escape", run: clearSnippet }
-	];
-	/**
-	A facet that can be used to configure the key bindings used by
-	snippets. The default binds Tab to
-	[`nextSnippetField`](https://codemirror.net/6/docs/ref/#autocomplete.nextSnippetField), Shift-Tab to
-	[`prevSnippetField`](https://codemirror.net/6/docs/ref/#autocomplete.prevSnippetField), and Escape
-	to [`clearSnippet`](https://codemirror.net/6/docs/ref/#autocomplete.clearSnippet).
-	*/
-	const snippetKeymap = /*@__PURE__*/Facet.define({
-	    combine(maps) { return maps.length ? maps[0] : defaultSnippetKeymap; }
-	});
-	const addSnippetKeymap = /*@__PURE__*/Prec.override(/*@__PURE__*/keymap.compute([snippetKeymap], state => state.facet(snippetKeymap)));
-	/**
-	Create a completion from a snippet. Returns an object with the
-	properties from `completion`, plus an `apply` function that
-	applies the snippet.
-	*/
-	function snippetCompletion(template, completion) {
-	    return Object.assign(Object.assign({}, completion), { apply: snippet(template) });
-	}
-	const snippetPointerHandler = /*@__PURE__*/EditorView.domEventHandlers({
-	    mousedown(event, view) {
-	        let active = view.state.field(snippetState, false), pos;
-	        if (!active || (pos = view.posAtCoords({ x: event.clientX, y: event.clientY })) == null)
-	            return false;
-	        let match = active.ranges.find(r => r.from <= pos && r.to >= pos);
-	        if (!match || match.field == active.active)
-	            return false;
-	        view.dispatch({
-	            selection: fieldSelection(active.ranges, match.field),
-	            effects: setActive.of(active.ranges.some(r => r.field > match.field) ? new ActiveSnippet(active.ranges, match.field) : null)
-	        });
-	        return true;
-	    }
-	});
-
-	function wordRE(wordChars) {
-	    let escaped = wordChars.replace(/[\\[.+*?(){|^$]/g, "\\$&");
-	    try {
-	        return new RegExp(`[\\p{Alphabetic}\\p{Number}_${escaped}]+`, "ug");
-	    }
-	    catch (_a) {
-	        return new RegExp(`[\w${escaped}]`, "g");
-	    }
-	}
-	function mapRE(re, f) {
-	    return new RegExp(f(re.source), re.unicode ? "u" : "");
-	}
-	const wordCaches = /*@__PURE__*/Object.create(null);
-	function wordCache(wordChars) {
-	    return wordCaches[wordChars] || (wordCaches[wordChars] = new WeakMap);
-	}
-	function storeWords(doc, wordRE, result, seen, ignoreAt) {
-	    for (let lines = doc.iterLines(), pos = 0; !lines.next().done;) {
-	        let { value } = lines, m;
-	        wordRE.lastIndex = 0;
-	        while (m = wordRE.exec(value)) {
-	            if (!seen[m[0]] && pos + m.index != ignoreAt) {
-	                result.push({ type: "text", label: m[0] });
-	                seen[m[0]] = true;
-	                if (result.length >= 2000 /* MaxList */)
-	                    return;
-	            }
-	        }
-	        pos += value.length + 1;
-	    }
-	}
-	function collectWords(doc, cache, wordRE, to, ignoreAt) {
-	    let big = doc.length >= 1000 /* MinCacheLen */;
-	    let cached = big && cache.get(doc);
-	    if (cached)
-	        return cached;
-	    let result = [], seen = Object.create(null);
-	    if (doc.children) {
-	        let pos = 0;
-	        for (let ch of doc.children) {
-	            if (ch.length >= 1000 /* MinCacheLen */) {
-	                for (let c of collectWords(ch, cache, wordRE, to - pos, ignoreAt - pos)) {
-	                    if (!seen[c.label]) {
-	                        seen[c.label] = true;
-	                        result.push(c);
-	                    }
-	                }
-	            }
-	            else {
-	                storeWords(ch, wordRE, result, seen, ignoreAt - pos);
-	            }
-	            pos += ch.length + 1;
-	        }
-	    }
-	    else {
-	        storeWords(doc, wordRE, result, seen, ignoreAt);
-	    }
-	    if (big && result.length < 2000 /* MaxList */)
-	        cache.set(doc, result);
-	    return result;
-	}
-	/**
-	A completion source that will scan the document for words (using a
-	[character categorizer](https://codemirror.net/6/docs/ref/#state.EditorState.charCategorizer)), and
-	return those as completions.
-	*/
-	const completeAnyWord = context => {
-	    let wordChars = context.state.languageDataAt("wordChars", context.pos).join("");
-	    let re = wordRE(wordChars);
-	    let token = context.matchBefore(mapRE(re, s => s + "$"));
-	    if (!token && !context.explicit)
-	        return null;
-	    let from = token ? token.from : context.pos;
-	    let options = collectWords(context.state.doc, wordCache(wordChars), re, 50000 /* Range */, from);
-	    return { from, options, span: mapRE(re, s => "^" + s) };
-	};
-
 	/**
 	Returns an extension that enables autocompletion.
 	*/
@@ -30056,25 +28848,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    { key: "Enter", run: acceptCompletion }
 	];
 	const completionKeymapExt = /*@__PURE__*/Prec.override(/*@__PURE__*/keymap.computeN([completionConfig], state => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
-	/**
-	Get the current completion status. When completions are available,
-	this will return `"active"`. When completions are pending (in the
-	process of being queried), this returns `"pending"`. Otherwise, it
-	returns `null`.
-	*/
-	function completionStatus(state) {
-	    let cState = state.field(completionState, false);
-	    return cState && cState.active.some(a => a.state == 1 /* Pending */) ? "pending"
-	        : cState && cState.active.some(a => a.state != 0 /* Inactive */) ? "active" : null;
-	}
-	/**
-	Returns the available completions as an array.
-	*/
-	function currentCompletions(state) {
-	    var _a;
-	    let open = (_a = state.field(completionState, false)) === null || _a === void 0 ? void 0 : _a.open;
-	    return open ? open.options.map(o => o.completion) : [];
-	}
 
 	/**
 	Comment or uncomment the current selection. Will use line comments
@@ -30084,7 +28857,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    let config = getConfig(target.state);
 	    return config.line ? toggleLineComment(target) : config.block ? toggleBlockComment(target) : false;
 	};
-	function command$1(f, option) {
+	function command(f, option) {
 	    return ({ state, dispatch }) => {
 	        let tr = f(option, state.selection.ranges, state);
 	        if (!tr)
@@ -30099,30 +28872,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	[`commentTokens`](https://codemirror.net/6/docs/ref/#comment.CommentTokens) [language
 	data](https://codemirror.net/6/docs/ref/#state.EditorState.languageDataAt).
 	*/
-	const toggleLineComment = /*@__PURE__*/command$1(changeLineComment, 0 /* Toggle */);
-	/**
-	Comment the current selection using line comments.
-	*/
-	const lineComment = /*@__PURE__*/command$1(changeLineComment, 1 /* Comment */);
-	/**
-	Uncomment the current selection using line comments.
-	*/
-	const lineUncomment = /*@__PURE__*/command$1(changeLineComment, 2 /* Uncomment */);
+	const toggleLineComment = /*@__PURE__*/command(changeLineComment, 0 /* Toggle */);
 	/**
 	Comment or uncomment the current selection using block comments.
 	The block comment syntax is taken from the
 	[`commentTokens`](https://codemirror.net/6/docs/ref/#comment.CommentTokens) [language
 	data](https://codemirror.net/6/docs/ref/#state.EditorState.languageDataAt).
 	*/
-	const toggleBlockComment = /*@__PURE__*/command$1(changeBlockComment, 0 /* Toggle */);
-	/**
-	Comment the current selection using block comments.
-	*/
-	const blockComment = /*@__PURE__*/command$1(changeBlockComment, 1 /* Comment */);
-	/**
-	Uncomment the current selection using block comments.
-	*/
-	const blockUncomment = /*@__PURE__*/command$1(changeBlockComment, 2 /* Uncomment */);
+	const toggleBlockComment = /*@__PURE__*/command(changeBlockComment, 0 /* Toggle */);
 	/**
 	Default key bindings for this package.
 
@@ -30670,33 +29427,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        let style = getHighlightStyle(state);
 	        return style && style(tag, scope || NodeType.none);
 	    }
-	}
-	/**
-	Run the tree highlighter over the given tree.
-	*/
-	function highlightTree(tree, 
-	/**
-	Get the CSS classes used to style a given [tag](https://codemirror.net/6/docs/ref/#highlight.Tag),
-	or `null` if it isn't styled. (You'll often want to pass a
-	highlight style's [`match`](https://codemirror.net/6/docs/ref/#highlight.HighlightStyle.match)
-	method here.)
-	*/
-	getStyle, 
-	/**
-	Assign styling to a region of the text. Will be called, in order
-	of position, for any ranges where more than zero classes apply.
-	`classes` is a space separated string of CSS classes.
-	*/
-	putStyle, 
-	/**
-	The start of the range to highlight.
-	*/
-	from = 0, 
-	/**
-	The end of the range.
-	*/
-	to = tree.length) {
-	    highlightTreeRange(tree, from, to, getStyle, putStyle);
 	}
 	class TreeHighlighter {
 	    constructor(view) {
@@ -31309,7 +30039,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	* [`definition`](https://codemirror.net/6/docs/ref/#highlight.tags.definition)[`(variableName)`](https://codemirror.net/6/docs/ref/#highlight.tags.variableName)
 	  to `"cmt-variableName cmt-definition"`
 	*/
-	const classHighlightStyle = /*@__PURE__*/HighlightStyle.define([
+	/*@__PURE__*/HighlightStyle.define([
 	    { tag: tags.link, class: "cmt-link" },
 	    { tag: tags.heading, class: "cmt-heading" },
 	    { tag: tags.emphasis, class: "cmt-emphasis" },
@@ -31392,15 +30122,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        baseTheme
 	    ]));
 	}
-	/**
-	Returns a transaction spec which updates the current set of
-	diagnostics.
-	*/
-	function setDiagnostics(state, diagnostics) {
-	    return {
-	        effects: maybeEnableLint(state, [setDiagnosticsEffect.of(diagnostics)], () => LintState.init(diagnostics, null, state))
-	    };
-	}
 	const setDiagnosticsEffect = /*@__PURE__*/StateEffect.define();
 	const togglePanel = /*@__PURE__*/StateEffect.define();
 	const movePanelSelection = /*@__PURE__*/StateEffect.define();
@@ -31433,13 +30154,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    provide: f => [showPanel.from(f, val => val.panel),
 	        EditorView.decorations.from(f, s => s.diagnostics)]
 	});
-	/**
-	Returns the number of active lint diagnostics in the given state.
-	*/
-	function diagnosticCount(state) {
-	    let lint = state.field(lintState, false);
-	    return lint ? lint.diagnostics.size : 0;
-	}
 	const activeMark = /*@__PURE__*/Decoration.mark({ class: "cm-lintRange cm-lintRange-active" });
 	function lintTooltip(view, pos, side) {
 	    let { diagnostics } = view.state.field(lintState);
@@ -31511,77 +30225,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    { key: "Mod-Shift-m", run: openLintPanel },
 	    { key: "F8", run: nextDiagnostic }
 	];
-	const lintPlugin = /*@__PURE__*/ViewPlugin.fromClass(class {
-	    constructor(view) {
-	        this.view = view;
-	        this.timeout = -1;
-	        this.set = true;
-	        let { delay } = view.state.facet(lintSource);
-	        this.lintTime = Date.now() + delay;
-	        this.run = this.run.bind(this);
-	        this.timeout = setTimeout(this.run, delay);
-	    }
-	    run() {
-	        let now = Date.now();
-	        if (now < this.lintTime - 10) {
-	            setTimeout(this.run, this.lintTime - now);
-	        }
-	        else {
-	            this.set = false;
-	            let { state } = this.view, { sources } = state.facet(lintSource);
-	            Promise.all(sources.map(source => Promise.resolve(source(this.view)))).then(annotations => {
-	                var _a, _b;
-	                let all = annotations.reduce((a, b) => a.concat(b));
-	                if (this.view.state.doc == state.doc &&
-	                    (all.length || ((_b = (_a = this.view.state.field(lintState, false)) === null || _a === void 0 ? void 0 : _a.diagnostics) === null || _b === void 0 ? void 0 : _b.size)))
-	                    this.view.dispatch(setDiagnostics(this.view.state, all));
-	            }, error => { logException(this.view.state, error); });
-	        }
-	    }
-	    update(update) {
-	        let source = update.state.facet(lintSource);
-	        if (update.docChanged || source != update.startState.facet(lintSource)) {
-	            this.lintTime = Date.now() + source.delay;
-	            if (!this.set) {
-	                this.set = true;
-	                this.timeout = setTimeout(this.run, source.delay);
-	            }
-	        }
-	    }
-	    force() {
-	        if (this.set) {
-	            this.lintTime = Date.now();
-	            this.run();
-	        }
-	    }
-	    destroy() {
-	        clearTimeout(this.timeout);
-	    }
-	});
-	const lintSource = /*@__PURE__*/Facet.define({
-	    combine(input) {
-	        return { sources: input.map(i => i.source), delay: input.length ? Math.max(...input.map(i => i.delay)) : 750 };
-	    },
-	    enables: lintPlugin
-	});
-	/**
-	Given a diagnostic source, this function returns an extension that
-	enables linting with that source. It will be called whenever the
-	editor is idle (after its content changed).
-	*/
-	function linter(source, config = {}) {
-	    var _a;
-	    return lintSource.of({ source, delay: (_a = config.delay) !== null && _a !== void 0 ? _a : 750 });
-	}
-	/**
-	Forces any linters [configured](https://codemirror.net/6/docs/ref/#lint.linter) to run when the
-	editor is idle to run right away.
-	*/
-	function forceLinting(view) {
-	    let plugin = view.plugin(lintPlugin);
-	    if (plugin)
-	        plugin.force();
-	}
 	function assignKeys(actions) {
 	    let assigned = [];
 	    if (actions)
@@ -32794,10 +31437,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      }
 	    }
 	  };
-	};
-
+	}
 	const gas = mkGas("x86");
-	const gasArm = mkGas("arm");
+	mkGas("arm");
 
 	class Display extends Array {
 	  constructor(size) {
@@ -32903,8 +31545,13 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	function getLowerByte(value) {
 	  return value & 0xff;
 	}
-	function getUpperByte(value) {
-	  return (value >> 8) & 0xff;
+
+	function isNegative(value) {
+	  // 0x80 = 128 = 0b1000 0000 means sign bit is set
+	  if (value & 0x80) {
+	    return true;
+	  }
+	  return false;
 	}
 
 	class Debugger {
@@ -33093,14 +31740,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.carry = new Flag();
 	  }
 	  clearAll() {
-	    this.negative.clear;
-	    this.overflow.clear;
-	    this.unused.set; // unused is always one according to 6502 specs
-	    this.break.clear;
-	    this.decimal.clear;
-	    this.interruptDisable.clear;
-	    this.zero.clear;
-	    this.carry.clear;
+	    this.negative.clear();
+	    this.overflow.clear();
+	    this.unused._set(); // unused is always one according to 6502 specs
+	    this.break.clear();
+	    this.decimal.clear();
+	    this.interruptDisable.clear();
+	    this.zero.clear();
+	    this.carry.clear();
 	  }
 
 	  get byte() {
@@ -33155,10 +31802,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.carry.setByValue(getBit(byte, 0));
 
 	    return;
-
-	    function getBit(byte, position) {
-	      return (byte >> position) & 1;
-	    }
 	  }
 
 	  toggleZeroAndNegative(value) {
@@ -33167,8 +31810,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    } else {
 	      this.zero._set();
 	    }
-	    if (value & 0x80) {
-	      // 128 = 0b1000 0000 means sign bit is set
+	    if (isNegative(value)) {
 	      this.negative._set();
 	    } else {
 	      this.negative.clear();
@@ -33206,6 +31848,183 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    "]";
 	  console.log(msg);
 	};
+	function getBit(byte, position) {
+	  return (byte >> position) & 1;
+	}
+
+	class Command {
+	  //prettier-ignore
+	  static opCodes = {
+	    // NoAd means, command can be called without param
+	    //Name NoAd  Imm   ZP    ZPX   ZPY   ABS   ABSI  ABSX  ABSY  INDX  INDY  BRA   imm+  imm-
+	    ADC: [ 0x00, 0x69, 0x65, 0x75, 0x00, 0x6d, 0x00, 0x7d, 0x79, 0x61, 0x71, 0x00, 0x00, 0x00, ],
+	    //
+	    AND: [ 0x00, 0x29, 0x25, 0x35, 0x00, 0x2d, 0x00, 0x3d, 0x39, 0x21, 0x31, 0x00, 0x00, 0x00, ],
+	    AAC: [ 0x00, 0x0b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    AAX: [ 0x00, 0x00, 0x87, 0x00, 0x97, 0x8f, 0x00, 0x00, 0x00, 0x83, 0x00, 0x00, 0x00, 0x00, ],
+	    ARR: [ 0x00, 0x6b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    ASR: [ 0x00, 0x4b, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    ATX: [ 0x00, 0xab, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    AXA: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x9f, 0x00, 0x93, 0x00, 0x00, 0x00, ],
+	    AXS: [ 0x00, 0xcb, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    LAR: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xbb, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    // DCB: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    ASL: [ 0x0a, 0x00, 0x06, 0x16, 0x00, 0x0e, 0x00, 0x1e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    BCC: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x90, 0x00, 0x00, ],
+	    BCS: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb0, 0x00, 0x00, ],
+	    BEQ: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x00, 0x00, ],
+	    BIT: [ 0x00, 0x00, 0x24, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    BMI: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30, 0x00, 0x00, ],
+	    BNE: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd0, 0x00, 0x00, ],
+	    BPL: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00, ],
+	    BRK: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    BVC: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50, 0x00, 0x00, ],
+	    BVS: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70, 0x00, 0x00, ],
+	    CLC: [ 0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    CLD: [ 0xd8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    CLI: [ 0x58, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    CLV: [ 0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    CMP: [ 0x00, 0xc9, 0xc5, 0xd5, 0x00, 0xcd, 0x00, 0xdd, 0xd9, 0xc1, 0xd1, 0x00, 0x00, 0x00, ],
+	    CPX: [ 0x00, 0xe0, 0xe4, 0x00, 0x00, 0xec, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    CPY: [ 0x00, 0xc0, 0xc4, 0x00, 0x00, 0xcc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    DEC: [ 0x00, 0x00, 0xc6, 0xd6, 0x00, 0xce, 0x00, 0xde, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    DEX: [ 0xca, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    DEY: [ 0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    EOR: [ 0x00, 0x49, 0x45, 0x55, 0x00, 0x4d, 0x00, 0x5d, 0x59, 0x41, 0x51, 0x00, 0x00, 0x00, ],
+	    INC: [ 0x00, 0x00, 0xe6, 0xf6, 0x00, 0xee, 0x00, 0xfe, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    INX: [ 0xe8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    INY: [ 0xc8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    JMP: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x6c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x100, 0x101, ],
+	    JSR: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    KIL: [ 0x00, 0xf2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    LDA: [ 0x00, 0xa9, 0xa5, 0xb5, 0x00, 0xad, 0x00, 0xbd, 0xb9, 0xa1, 0xb1, 0x00, 0x00, 0x00, ],
+	    LDX: [ 0x00, 0xa2, 0xa6, 0x00, 0xb6, 0xae, 0x00, 0x00, 0xbe, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    LDY: [ 0x00, 0xa0, 0xa4, 0xb4, 0x00, 0xac, 0x00, 0xbc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    LAX: [ 0x00, 0x00, 0xa7, 0x00, 0xb7, 0xaf, 0x00, 0x00, 0xbf, 0xa3, 0xb3, 0x00, 0x00, 0x00, ],
+	    LSR: [ 0x4a, 0x00, 0x46, 0x56, 0x00, 0x4e, 0x00, 0x5e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    
+	    //Name NoAd  Imm   ZP    ZPX   ZPY   ABS   ABSI  ABSX  ABSY  INDX  INDY  BRA
+	    NOP: [ 0xea, 0xfa, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    DOP: [ 0x00, 0xe2, 0x64, 0xf4, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    TOP: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x0c, 0x00, 0xfc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+
+	    ORA: [ 0x00, 0x09, 0x05, 0x15, 0x00, 0x0d, 0x00, 0x1d, 0x19, 0x01, 0x11, 0x00, 0x00, 0x00, ],
+	    PHA: [ 0x48, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    PHP: [ 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    PLA: [ 0x68, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    PLP: [ 0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    ROL: [ 0x2a, 0x00, 0x26, 0x36, 0x00, 0x2e, 0x00, 0x3e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    ROR: [ 0x6a, 0x00, 0x66, 0x76, 0x00, 0x6e, 0x00, 0x7e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    RTI: [ 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    RTS: [ 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    SBC: [ 0x00, 0xe9, 0xe5, 0xf5, 0x00, 0xed, 0x00, 0xfd, 0xf9, 0xe1, 0xf1, 0x00, 0x00, 0x00, ],
+	    SEC: [ 0x38, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    SED: [ 0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    SEI: [ 0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    STA: [ 0x00, 0x00, 0x85, 0x95, 0x00, 0x8d, 0x00, 0x9d, 0x99, 0x81, 0x91, 0x00, 0x00, 0x00, ],
+	    STX: [ 0x00, 0x00, 0x86, 0x00, 0x96, 0x8e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    STY: [ 0x00, 0x00, 0x84, 0x94, 0x00, 0x8c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    TAX: [ 0xaa, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    TAY: [ 0xa8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    TSX: [ 0xba, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    TXA: [ 0x8a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    TXS: [ 0x9a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    TYA: [ 0x98, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+	    DCB: [ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ],
+
+	// illegal
+	    // KIL, stop programm counter (processor lock up)
+	    // KIL : [0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x92, 0xb2, 0xd2, 0xf2],
+	  };
+	  static getOpCodeName(opCode) {
+	    let opCodeName = fmtToHex(opCode);
+	    Object.entries(Command.opCodes).forEach(([name, opCodes]) => {
+	      if (opCode != 0x00 && opCodes.find((opCodeV) => opCodeV == opCode)) {
+	        opCodeName = name;
+	      }
+	    });
+	    return opCodeName;
+	  }
+	  static isBranchInstruction(opCode) {
+	    let branchOpCodes = new Array(
+	      0x10,
+	      0x30,
+	      0x50,
+	      0x70,
+	      0x90,
+	      0xb0,
+	      0xd0,
+	      0xf0
+	    );
+	    if (branchOpCodes.includes(opCode)) {
+	      return true;
+	    }
+	    return false;
+	  }
+	  static isJumpInstruction(opCode) {
+	    if (opCode == 0x4c || opCode == 0x6c) {
+	      return true;
+	    }
+	    return false;
+	  }
+	  constructor(commandName, lineNumber) {
+	    this.name = commandName;
+	    this.lineNumber = lineNumber;
+	    this.opCode = 0x00;
+	    this.noParam = Command.opCodes[this.name][0];
+	    this.immediate = Command.opCodes[this.name][1];
+	    this.zeroPage = Command.opCodes[this.name][2];
+	    this.zeroPageX = Command.opCodes[this.name][3];
+	    this.zeroPageY = Command.opCodes[this.name][4];
+	    this.absolute = Command.opCodes[this.name][5];
+	    this.absoluteIndirect = Command.opCodes[this.name][6];
+	    this.absoluteX = Command.opCodes[this.name][7];
+	    this.absoluteY = Command.opCodes[this.name][8];
+	    this.indirectX = Command.opCodes[this.name][9];
+	    this.indirectY = Command.opCodes[this.name][10];
+	    this.branch = Command.opCodes[this.name][11];
+	    this.immediateRelativePlus = Command.opCodes[this.name][12];
+	    this.immediateRelativeMinus = Command.opCodes[this.name][13];
+	  }
+
+	  compileOpCode(param, memory, lineBeforeThisWasAddressOnly) {
+	    if (this.name == "DCB") {
+	      let countParam = param.compileDcb();
+	      if (!lineBeforeThisWasAddressOnly) {
+	        return 0;
+	      }
+	      return countParam;
+	    }
+	    this.opCode = this[param.addrModeName];
+	    if (this.opCode == 0x00 && this.name != "BRK") {
+	      raiseAddressingModeError(
+	        this.lineNumber,
+	        "OpCode for command " +
+	          this.name +
+	          " with addrMode " +
+	          param.addrModeName +
+	          " unset"
+	      );
+	    }
+
+	    let countPushedOpCodes = this.#pushOpCode(memory);
+	    countPushedOpCodes += param.push(memory);
+	    return countPushedOpCodes;
+	  }
+
+	  #pushOpCode(memory) {
+	    const op = new OpCodeByteEntry(this.opCode, this.lineNumber);
+	    memory.pushByte(op);
+	    return 1; // for lineLen/codeLen
+	  }
+	}
+	Command.prototype.toString = function () {
+	  let str = "OpCode\n";
+	  Object.entries(this).forEach(([k, v]) => {
+	    str += "  " + k + ": " + v;
+	  });
+	  return str;
+	};
 
 	class Memory extends Array {
 	  constructor() {
@@ -33230,9 +32049,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  // generell memory setter and getter --------------------------------------------------------
 	  readWord(address) {
 	    let lowerByteEntry = this.readByte(address);
-	    let lowerByte = lowerByteEntry.value;
-	    let upperByte = this.readByte(address + 1).value;
-	    let word = (upperByte << 8) + lowerByte;
+	    let upperByteEntry = this.readByte(address + 1);
+	    let word = (upperByteEntry.value << 8) + lowerByteEntry.value;
 	    return new WordEntry(word, lowerByteEntry.lineNumber);
 	  }
 
@@ -33251,7 +32069,10 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	    if (!(memoryEntry instanceof LabelEntry)) {
 	      // for label insertion
-	      memoryEntry = memoryEntry.lowerByteEntry; // make sure, this is a byte
+	      // handling special educative jmp relative command
+	      if (![0x100, 0x101].includes(memoryEntry.value)) {
+	        memoryEntry = memoryEntry.lowerByteEntry; // make sure, this is a byte
+	      }
 	    }
 
 	    return memoryEntry;
@@ -33293,12 +32114,22 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	    if (!(memoryEntry instanceof LabelEntry)) {
 	      // for label insertion
-	      memoryEntry = memoryEntry.lowerByteEntry;
+	      // handling special educative jmp relative command
+	      if (![0x100, 0x101].includes(memoryEntry.value)) {
+	        memoryEntry = memoryEntry.lowerByteEntry;
+	      }
 	    }
 	    this[address] = memoryEntry;
 	  }
 
 	  // stack setter and getter ------------------------------------------------------------------
+	  popWordFromStack() {
+	    let lowerByteEntry = this.popByteFromStack();
+	    let upperByteEntry = this.popByteFromStack();
+	    let word = (upperByteEntry.value << 8) + (lowerByteEntry.value + 1);
+	    return new WordEntry(word, lowerByteEntry.lineNumber);
+	  }
+
 	  popByteFromStack() {
 	    if (this.regSP < 0x100) {
 	      let addr = this.regSP + 0x100;
@@ -33310,14 +32141,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      exports.codeRunning = false;
 	      return 0;
 	    }
-	  }
-
-	  popWordFromStack() {
-	    let lowerByteEntry = this.popByteFromStack();
-	    let lowerByte = lowerByteEntry.value + 1;
-	    let upperByte = this.popByteFromStack().value;
-	    let word = (upperByte << 8) + lowerByte;
-	    return new WordEntry(word, lowerByteEntry.lineNumber);
 	  }
 
 	  pushByteToStack(byteEntry) {
@@ -33335,7 +32158,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.pushByteToStack(wordEntry.upperByteEntry);
 	    this.pushByteToStack(wordEntry.lowerByteEntry);
 	  }
-	 
+
 	  dumpHTML() {
 	    let dump = "";
 	    this.forEach((memoryEntry, address) => {
@@ -33347,7 +32170,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      dump += "  " + fmtToHex(address) + " : " + memoryEntry.toString();
 	    });
 	    return dump;
-
+	  }
+	  dumpPlainHTML() {
+	    let dump = "";
+	    this.forEach((memoryEntry, address) => {
+	      dump += "<br/>";
+	      dump += "  " + fmtToHex(address) + " : " + fmtToHex(memoryEntry.value);
+	    });
+	    return dump;
 	  }
 	}
 	Memory.prototype.toString = function () {
@@ -33405,7 +32235,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  );
 
 	  function lineNumberToString() {
-	    
 	    if (this.value === this.lineNumber) {
 	      return "                   ";
 	    }
@@ -33415,8 +32244,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    if (this.lineNumber < 0) {
 	      return "                   ";
 	    }
-	    return "       at line " +
-	    this.lineNumber.toString().padStart(4, " ")
+	    return "       at line " + this.lineNumber.toString().padStart(4, " ");
 	  }
 	};
 
@@ -33465,252 +32293,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 	WordEntry.prototype.toString = function () {
 	  return "WordEntry       : " + fmtToHex(this.value) + ")";
-	};
-
-	class Compiler {
-	  constructor(plainCode) {
-	    this.plainCode = plainCode;
-	    this.codeLen = 0;
-	    this.codeLines = new Array();
-	    this.labelAddresses = new LabelAddresses();
-	    this.memory = new Memory();
-	  }
-
-	  preprocessCode() {
-	    let code = this.plainCode;
-	    code += "\n\n";
-	    code = code.split("\n");
-	    code.forEach((line, lineNumber) => {
-	      line = removeComments(line);
-	      line = trimLine(line);
-	      this.codeLines.push(new CodeLine(line, lineNumber + 1));
-	    });
-	    return this;
-
-	    // helper
-	    function removeComments(line) {
-	      return line.replace(/^(.*?);.*/, "$1");
-	    }
-	    function trimLine(line) {
-	      line = line.replace(/^\s+/, "");
-	      line = line.replace(/\s+$/, "");
-	      return line;
-	    }
-	  }
-
-	  scanLabels() {
-	    this.codeLines.forEach((codeLine) => {
-	      codeLine.scanLabel(this.labelAddresses);
-	    });
-	    this.labelAddresses.printLabelCount();
-	    return this;
-	  }
-
-	  compile() {
-	    let lineBeforeThisWasAddressOnly = false;
-	    this.codeLines.forEach((codeLine) => {
-	      let codeLen = codeLine.compileLine({
-	        memory: this.memory,
-	        lineBeforeThisWasAddressOnly: lineBeforeThisWasAddressOnly,
-	      });
-	      if (codeLen >= 0) {
-	        this.codeLen += codeLen;
-	        lineBeforeThisWasAddressOnly = false;
-	      } else {
-	        // do not count, if there was a line with only an address directly before this line
-	        lineBeforeThisWasAddressOnly = true;
-	      }
-	    });
-	    // insert 0x00 at largest used memory address to mark end of memory
-	    this.memory.writeByte(0xa28, new ByteEntry(0x00, -1));
-
-	    return this;
-	  }
-
-	  insertLabelAddressesToMemory() {
-	    if (this.noCode()) {
-	      return this;
-	    }
-	    for (let codePC = 0x600; codePC < 0xa28; codePC++) {
-	      this.labelAddresses.insertToMemory(codePC, this.memory);
-	    }
-
-	    return this;
-	  }
-
-	  noCode() {
-	    if (this.codeLines.every((v) => v.noCode() === true)) {
-	      return true;
-	    }
-	    return false;
-	  }
-	}
-
-	class CodeLine {
-	  constructor(content, number) {
-	    this.content = content;
-	    this.number = number;
-	    this.labelAddresses;
-	    this.regExp = {
-	      addressOnly: /^\*[\s]*=[\s]*([\$]?[0-9a-f]*)$/,
-	      label: /^(\w+):.*$/,
-	      commandWithLeadLabel: /^\w+:\s*(\w+)\s*.*$/,
-	      command: /^(\w\w\w)\s*.*$/,
-	      paramWithLeadLabel: /^\w+:\s*\w+\s+(.*?)/,
-	      param: /^\w\w\w+\s+(.*?)/,
-	    };
-	  }
-
-	  scanLabel(labelAddresses) {
-	    this.labelAddresses = labelAddresses;
-	    if (this.#isLabel()) {
-	      if (this.label in this.labelAddresses) {
-	        let defLineNumber = this.labelAddresses[this.label].lineNumber;
-	        raiseLabelError(
-	          codeLine.number,
-	          "Label '" + this.label + "' already defined at line " + defLineNumber
-	        );
-	        return;
-	      }
-	      // Use label as Address provisionaly => will be read correctly later!
-	      labelAddresses[this.label] = new LabelAddress(this.label, this.number);
-	    }
-	    return;
-	  }
-
-	  compileLine({ memory, lineBeforeThisWasAddressOnly = false } = {}) {
-	    if (this.#isBlank()) {
-	      return 0;
-	    }
-	    if (this.#isOnlyAddress()) {
-	      memory.defaultCodePC = this.address;
-	      return -1; // to set lineBeforeThisWasAddressOnly
-	    }
-	    if (this.#isLabel()) {
-	      this.labelAddresses[this.label] = new LabelAddress(
-	        memory.defaultCodePC,
-	        this.number
-	      );
-	      if (!this.#isCommandWithLeadLabel()) {
-	        return 0; //lineLen = 0 and return here since labels might be recognized as commands
-	      }
-	    }
-
-	    let commandName = this.commandName;
-	    if (commandName == "") {
-	      return 0; // lineLen = 0
-	    }
-
-	    if (commandName in Command.opCodes) {
-	      let command = new Command(commandName, this.number);
-
-	      let param = new ParamFactory().create({
-	        name: this.paramName,
-	        lineNumber: this.number,
-	        labelAddresses: this.labelAddresses,
-	        commandName: commandName,
-	        memory: memory,
-	      });
-
-	      return command.compileOpCode(param, memory, lineBeforeThisWasAddressOnly);
-	    }
-	    raiseSyntaxError(this.number, "Command '" + command.name + "' undefined");
-	    return 0;
-	  }
-	  get address() {
-	    let addr = this.#extract(this.regExp.addressOnly);
-	    addr = this.#addrToHexOrDec(addr);
-	    return addr;
-	  }
-	  get label() {
-	    return this.#extract(this.regExp.label);
-	  }
-	  get commandName() {
-	    let lineContent = this.content;
-	    let commandName = "";
-	    if (lineContent.match(this.regExp.commandWithLeadLabel)) {
-	      commandName = this.#extract(
-	        this.regExp.commandWithLeadLabel
-	      ).toUpperCase();
-	    } else if (lineContent.match(this.regExp.command)) {
-	      commandName = this.#extract(this.regExp.command).toUpperCase();
-	    } else {
-	      raiseSyntaxError(
-	        this.number,
-	        "Command in line '" + this.content + "' undefined"
-	      );
-	    }
-	    return commandName;
-	  }
-	  get paramName() {
-	    let lineContent = this.content;
-	    let paramName = "";
-	    if (lineContent.match(this.regExp.paramWithLeadLabel)) {
-	      paramName = this.#extract(this.regExp.paramWithLeadLabel).replace(
-	        /[ ]/g,
-	        ""
-	      );
-	    } else if (lineContent.match(this.regExp.param)) {
-	      paramName = this.#extract(this.regExp.param).replace(/[ ]/g, "");
-	    }
-	    return paramName;
-	  }
-
-	  noCode() {
-	    if (this.content === "") {
-	      return true;
-	    }
-	    return false;
-	  }
-
-	  #isBlank() {
-	    if (this.content == "") {
-	      return true;
-	    }
-	    return false;
-	  }
-	  #isOnlyAddress() {
-	    if (this.content.match(this.regExp.addressOnly)) {
-	      return true;
-	    }
-	    return false;
-	  }
-	  #isLabel() {
-	    if (this.content.match(this.regExp.label)) {
-	      return true;
-	    }
-	    return false;
-	  }
-	  #isCommandWithLeadLabel() {
-	    if (this.content.match(this.regExp.commandWithLeadLabel)) {
-	      return true;
-	    }
-	    return false;
-	  }
-	  #extract(regExp) {
-	    return this.content.replace(regExp, "$1");
-	  }
-	  #addrToHexOrDec(addr) {
-	    if (addr[0] == "$") {
-	      addr = addr.replace(/^\$/, ""); //strip leading dollar sign
-	      addr = parseInt(addr, 16);
-	    } else {
-	      addr = parseInt(addr, 10);
-	    }
-	    this.#validateAddress(addr);
-	    return addr;
-	  }
-	  #validateAddress(addr) {
-	    if (addr < 0x0 || addr > 0xffff) {
-	      raiseRangeError(
-	        "Address '" + addr + "' out of range(" + 0x0 + ", " + 0xfff + ")"
-	      );
-	    }
-	    return;
-	  }
-	}
-	CodeLine.prototype.toString = function () {
-	  return "line " + this.number + ": " + this.content;
 	};
 
 	class LabelAddresses {
@@ -33817,170 +32399,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  );
 	};
 
-	class Command {
-	  static opCodes = {
-	    // NoAd means, command can be called without param
-	    //Name  NoAd  Imm   ZP   ZPX   ZPY   ABS  ABSI  ABSX  ABSY  INDX  INDY  BRA
-	    ADC: [0x00, 0x69, 0x65, 0x75, 0x00, 0x6d, 0x00, 0x7d, 0x79, 0x61, 0x71, 0x00],
-	    AND: [0x00, 0x29, 0x25, 0x35, 0x00, 0x2d, 0x00, 0x3d, 0x39, 0x21, 0x31, 0x00],
-	    ASL: [0x0a, 0x00, 0x06, 0x16, 0x00, 0x0e, 0x00, 0x1e, 0x00, 0x00, 0x00, 0x00],
-	    BCC: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x90],
-	    BCS: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb0],
-	    BEQ: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0],
-	    BIT: [0x00, 0x00, 0x24, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    BMI: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x30],
-	    BNE: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xd0],
-	    BPL: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10],
-	    BRK: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    BVC: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x50],
-	    BVS: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x70],
-	    CLC: [0x18, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CLD: [0xd8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CLI: [0x58, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CLV: [0xb8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CMP: [0x00, 0xc9, 0xc5, 0xd5, 0x00, 0xcd, 0x00, 0xdd, 0xd9, 0xc1, 0xd1, 0x00],
-	    CPX: [0x00, 0xe0, 0xe4, 0x00, 0x00, 0xec, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    CPY: [0x00, 0xc0, 0xc4, 0x00, 0x00, 0xcc, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    DEC: [0x00, 0x00, 0xc6, 0xd6, 0x00, 0xce, 0x00, 0xde, 0x00, 0x00, 0x00, 0x00],
-	    DEX: [0xca, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    DEY: [0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    EOR: [0x00, 0x49, 0x45, 0x55, 0x00, 0x4d, 0x00, 0x5d, 0x59, 0x41, 0x51, 0x00],
-	    INC: [0x00, 0x00, 0xe6, 0xf6, 0x00, 0xee, 0x00, 0xfe, 0x00, 0x00, 0x00, 0x00],
-	    INX: [0xe8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    INY: [0xc8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    JMP: [0x00, 0x00, 0x00, 0x00, 0x00, 0x4c, 0x6c, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    JSR: [0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    LDA: [0x00, 0xa9, 0xa5, 0xb5, 0x00, 0xad, 0x00, 0xbd, 0xb9, 0xa1, 0xb1, 0x00],
-	    LDX: [0x00, 0xa2, 0xa6, 0x00, 0xb6, 0xae, 0x00, 0x00, 0xbe, 0x00, 0x00, 0x00],
-	    LDY: [0x00, 0xa0, 0xa4, 0xb4, 0x00, 0xac, 0x00, 0xbc, 0x00, 0x00, 0x00, 0x00],
-	    LSR: [0x4a, 0x00, 0x46, 0x56, 0x00, 0x4e, 0x00, 0x5e, 0x00, 0x00, 0x00, 0x00],
-	    NOP: [0xea, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    ORA: [0x00, 0x09, 0x05, 0x15, 0x00, 0x0d, 0x00, 0x1d, 0x19, 0x01, 0x11, 0x00],
-	    PHA: [0x48, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    PHP: [0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    PLA: [0x68, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    PLP: [0x28, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    ROL: [0x2a, 0x00, 0x26, 0x36, 0x00, 0x2e, 0x00, 0x3e, 0x00, 0x00, 0x00, 0x00],
-	    ROR: [0x6a, 0x00, 0x66, 0x76, 0x00, 0x6e, 0x00, 0x7e, 0x00, 0x00, 0x00, 0x00],
-	    RTI: [0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    RTS: [0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    SBC: [0x00, 0xe9, 0xe5, 0xf5, 0x00, 0xed, 0x00, 0xfd, 0xf9, 0xe1, 0xf1, 0x00],
-	    SEC: [0x38, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    SED: [0xf8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    SEI: [0x78, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    STA: [0x00, 0x00, 0x85, 0x95, 0x00, 0x8d, 0x00, 0x9d, 0x99, 0x81, 0x91, 0x00],
-	    STX: [0x00, 0x00, 0x86, 0x00, 0x96, 0x8e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    STY: [0x00, 0x00, 0x84, 0x94, 0x00, 0x8c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TAX: [0xaa, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TAY: [0xa8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TSX: [0xba, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TXA: [0x8a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TXS: [0x9a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    TYA: [0x98, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-	    DCB: [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-
-	    // illegal
-	    // NOP, addressing mode has no significace, only timing
-	    // NOP : [0x1a, 0x3a, 0x5a, 0x7a, 0xda, 0xfb],
-	    // Double NOP, addressing mode has no significace, only timing
-	    // DOP : [0x04, 0x14, 0x34, 0x44, 0x54, 0x64, 0x74, 0x80, 0x82, 0x89, 0xc2, 0xd4, 0xe2, 0xf4],
-	    // Tripple NOP, addressing mode has no significace, only timing
-	    // TOP : [0x0c, 0x1c, 0x3c, 0x5c, 0x7c, 0xdc, 0xfc],
-	    // KIL, stop programm counter (processor lock up)
-	    // KIL : [0x02, 0x12, 0x22, 0x32, 0x42, 0x52, 0x62, 0x72, 0x92, 0xb2, 0xd2, 0xf2],
-	  };
-	  static getOpCodeName(opCode) {
-	    let opCodeName = fmtToHex(opCode);
-	    Object.entries(Command.opCodes).forEach(([name, opCodes]) => {
-	      if (opCode != 0x00 && opCodes.find((opCodeV) => opCodeV == opCode)) {
-	        opCodeName = name;
-	      }
-	    });
-	    return opCodeName;
-	  }
-	  static isBranchInstruction(opCode) {
-	    let branchOpCodes = new Array(
-	      0x10,
-	      0x30,
-	      0x50,
-	      0x70,
-	      0x90,
-	      0xb0,
-	      0xd0,
-	      0xf0
-	    );
-	    if (branchOpCodes.includes(opCode)) {
-	      return true;
-	    }
-	    return false;
-	  }
-	  static isJumpInstruction(opCode) {
-	    if (opCode == 0x4c || opCode == 0x6c) {
-	      return true;
-	    }
-	    return false;
-	  }
-	  constructor(commandName, lineNumber) {
-	    (this.name = commandName), (this.lineNumber = lineNumber);
-	    this.opCode = 0x00;
-	    this.noParam = Command.opCodes[this.name][0];
-	    this.immediate = Command.opCodes[this.name][1];
-	    this.zeroPage = Command.opCodes[this.name][2];
-	    this.zeroPageX = Command.opCodes[this.name][3];
-	    this.zeroPageY = Command.opCodes[this.name][4];
-	    this.absolute = Command.opCodes[this.name][5];
-	    this.absoluteIndirect = Command.opCodes[this.name][6];
-	    this.absoluteX = Command.opCodes[this.name][7];
-	    this.absoluteY = Command.opCodes[this.name][8];
-	    this.indirectX = Command.opCodes[this.name][9];
-	    this.indirectY = Command.opCodes[this.name][10];
-	    this.branch = Command.opCodes[this.name][11];
-	  }
-
-	  compileOpCode(param, memory, lineBeforeThisWasAddressOnly) {
-	    if (this.name == "DCB") {
-	      let countParam = param.compileDcb();
-	      if (!lineBeforeThisWasAddressOnly) {
-	        return 0;
-	      }
-	      return countParam;
-	    }
-	    this.opCode = this[param.addrModeName];
-	    if (this.opCode == 0x00 && this.name != "BRK") {
-	      raiseAddressingModeError(
-	        this.lineNumber,
-	        "OpCode for command " +
-	          this.name +
-	          " with addrMode " +
-	          param.addrModeName +
-	          " unset"
-	      );
-	    }
-
-	    let countPushedOpCodes = this.#pushOpCode(memory);
-	    countPushedOpCodes += param.push(memory);
-	    return countPushedOpCodes;
-	  }
-
-	  #pushOpCode(memory) {
-	    memory.pushByte(new OpCodeByteEntry(this.opCode, this.lineNumber));
-	    return 1; // for lineLen/codeLen
-	  }
-	}
-	Command.prototype.toString = function () {
-	  let str = "OpCode\n";
-	  Object.entries(this).forEach(([k, v]) => {
-	    str += "  " + k + ": " + v;
-	  });
-	  return str;
-	};
-
 	class Param {
 	  static regExps = {
 	    label: /^\w+/,
 	    labelIndirect: /^\(\w+\)/,
 	    immediateHexNo: /^#\$([0-9a-f]{1,2})/,
 	    immediateDecNo: /^#([0-9]{1,3})/,
+	    immediateRelativePlusDecNo: /^#\+([0-9]{1,3})/,
+	    immediateRelativeMinusDecNo: /^#\-([0-9]{1,3})/,
 	    highLowLabel: /^#[<>]\w+/,
 	    zeroPageHexNo: /^\$([0-9a-f]{1,2})/,
 	    zeroPageDecNo: /^([0-9]{1,3})/,
@@ -34048,6 +32474,18 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	    return true;
 	  }
+	  isImmediateRelativePlus() {
+	    if (!this.#isImmediateRelativePlusDecNumber()) {
+	      return false;
+	    }
+	    return true;
+	  }
+	  isImmediateRelativeMinus() {
+	    if (!this.#isImmediateRelativeMinusDecNumber()) {
+	      return false;
+	    }
+	    return true;
+	  }
 	  isZeroPage(register) {
 	    if (
 	      !this.#isZeroPageHexNumber(register) &&
@@ -34101,6 +32539,16 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	  #isImmediateDecNumber() {
 	    return this.#matchesRegExp({ regExp: Param.regExps.immediateDecNo });
+	  }
+	  #isImmediateRelativePlusDecNumber() {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.immediateRelativePlusDecNo,
+	    });
+	  }
+	  #isImmediateRelativeMinusDecNumber() {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.immediateRelativeMinusDecNo,
+	    });
 	  }
 	  #hasHighLowLabel() {
 	    let bool = this.#matchesRegExp({ regExp: Param.regExps.highLowLabel });
@@ -34234,6 +32682,40 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      return hilo + this.labelAddresses[label].word;
 	    }
 	  }
+	  pushForImmediateRelativePlus() {
+	    if (this.#isImmediateRelativePlusDecNumber()) {
+	      let byte = extractImmediateRelativePlusDecNumber.bind(this)();
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
+	      return 1; // for lineLen/codeLen
+	    }
+	    throw "Call this function only if isImmediateRelativePlus() is true!";
+
+	    // helper
+	    function extractImmediateRelativePlusDecNumber() {
+	      return this.#extractNumber({
+	        regExp: Param.regExps.immediateRelativePlusDecNo,
+	        base: 10,
+	        max: 255,
+	      });
+	    }
+	  }
+	  pushForImmediateRelativeMinus() {
+	    if (this.#isImmediateRelativeMinusDecNumber()) {
+	      let byte = extractImmediateRelativeMinusDecNumber.bind(this)();
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
+	      return 1; // for lineLen/codeLen
+	    }
+	    throw "Call this function only if isImmediateRelativeMinus() is true!";
+
+	    // helper
+	    function extractImmediateRelativeMinusDecNumber() {
+	      return this.#extractNumber({
+	        regExp: Param.regExps.immediateRelativeMinusDecNo,
+	        base: 10,
+	        max: 255,
+	      });
+	    }
+	  }
 	  pushForZeroPage() {
 	    let register = this.register;
 	    if (this.#isZeroPageHexNumber(register)) {
@@ -34301,8 +32783,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	    // helper
 	    function extractLabel(register) {
-	      if (register == "") {
-	      }
 	      return this.name.replace(new RegExp("," + register + "$", "i"), "");
 	    }
 	    function extractAbsoluteHexNumber(register) {
@@ -34358,8 +32838,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	    // helper
 	    function extractLabelIndirect(register) {
-	      if (register == "") {
-	      }
 	      let label = this.name.replace(/^\(/, "");
 	      label = label.replace(/\)$/, "");
 	      return label;
@@ -34514,6 +32992,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    } else if (param.isImmediate()) {
 	      addrModeName = "immediate";
 	      pushFunction = param.pushForImmediate;
+	    } else if (param.isImmediateRelativePlus("")) {
+	      addrModeName = "immediateRelativePlus";
+	      pushFunction = param.pushForImmediateRelativePlus;
+	    } else if (param.isImmediateRelativeMinus("")) {
+	      addrModeName = "immediateRelativeMinus";
+	      pushFunction = param.pushForImmediateRelativeMinus;
 	    } else if (param.isZeroPage("")) {
 	      addrModeName = "zeroPage";
 	      pushFunction = param.pushForZeroPage;
@@ -34564,391 +33048,595 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 	ParamFactory.prototype.param = Param;
 
-	var instructions = new Array( // /**/ means legal instruction
-	  i00,
-	  /**/ i01,
-	  i02,
-	  i03,
-	  i04,
-	  i05,
-	  /**/ i06,
-	  /**/ i07,
-	  i08 /**/,
-	  i09,
-	  /**/ i0a,
-	  /**/ i0b,
-	  i0c,
-	  i0d,
-	  i0e,
-	  /**/ i0f,
-	  i10,
-	  /**/ i11,
-	  i12,
-	  i13,
-	  i14,
-	  i15,
-	  /**/ i16,
-	  /**/ i17,
-	  i18 /**/,
-	  i19,
-	  /**/ i1a,
-	  i1b,
-	  i1c,
-	  i1d,
-	  i1e,
-	  /**/ i1f,
-	  i20,
-	  /**/ i21,
-	  i22,
-	  i23,
-	  i24,
-	  /**/ i25,
-	  /**/ i26,
-	  /**/ i27,
-	  i28 /**/,
-	  i29,
-	  /**/ i2a,
-	  /**/ i2b,
-	  i2c,
-	  /**/ i2d,
-	  i2e,
-	  /**/ i2f,
-	  i30,
-	  /**/ i31,
-	  i32,
-	  i33,
-	  i34,
-	  i35,
-	  /**/ i36,
-	  /**/ i37,
-	  i38 /**/,
-	  i39,
-	  /**/ i3a,
-	  i3b,
-	  i3c,
-	  i3d,
-	  i3e,
-	  /**/ i3f,
-	  i40,
-	  /**/ i41,
-	  i42,
-	  i43,
-	  i44,
-	  i45,
-	  /**/ i46,
-	  /**/ i47,
-	  i48 /**/,
-	  i49,
-	  /**/ i4a,
-	  /**/ i4b,
-	  i4c,
-	  /**/ i4d,
-	  i4e,
-	  /**/ i4f,
-	  i50,
-	  /**/ i51,
-	  i52,
-	  i53,
-	  i54,
-	  i55,
-	  /**/ i56,
-	  /**/ i57,
-	  i58 /**/,
-	  i59,
-	  /**/ i5a,
-	  i5b,
-	  /**/ i5c,
-	  i5d,
-	  i5e,
-	  /**/ i5f,
-	  i60,
-	  /**/ i61,
-	  i62,
-	  i63,
-	  i64,
-	  i65,
-	  /**/ i66,
-	  /**/ i67,
-	  i68 /**/,
-	  i69,
-	  /**/ i6a,
-	  /**/ i6b,
-	  i6c,
-	  /**/ i6d,
-	  i6e,
-	  /**/ i6f,
-	  i70,
-	  /**/ i71,
-	  i72,
-	  i73,
-	  i74,
-	  i75,
-	  /**/ i76,
-	  /**/ i77,
-	  i78 /**/,
-	  i79,
-	  /**/ i7a,
-	  i7b,
-	  i7c,
-	  i7d,
-	  i7e,
-	  /**/ i7f,
-	  i80,
-	  i81,
-	  i82,
-	  i83,
-	  i84,
-	  /**/ i85,
-	  /**/ i86,
-	  /**/ i87,
-	  i88 /**/,
-	  i89,
-	  i8a,
-	  /**/ i8b,
-	  i8c,
-	  /**/ i8d,
-	  i8e,
-	  /**/ i8f,
-	  i90,
-	  /**/ i91,
-	  i92,
-	  i93,
-	  i94,
-	  /**/ i95,
-	  /**/ i96,
-	  /**/ i97,
-	  i98 /**/,
-	  i99,
-	  /**/ i9a,
-	  /**/ i9b,
-	  i9c,
-	  i9d,
-	  i9e,
-	  i9f,
-	  ia0,
-	  /**/ ia1,
-	  ia2,
-	  /**/ ia3,
-	  ia4,
-	  /**/ ia5,
-	  /**/ ia6,
-	  /**/ ia7,
-	  ia8 /**/,
-	  ia9,
-	  /**/ iaa,
-	  /**/ iab,
-	  iac,
-	  /**/ iad,
-	  iae,
-	  /**/ iaf,
-	  ib0,
-	  /**/ ib1,
-	  ib2,
-	  ib3,
-	  ib4,
-	  /**/ ib5,
-	  /**/ ib6,
-	  /**/ ib7,
-	  ib8 /**/,
-	  ib9,
-	  /**/ iba,
-	  ibb,
-	  ibc,
-	  /**/ ibd,
-	  ibe,
-	  /**/ ibf,
-	  ic0,
-	  /**/ ic1,
-	  ic2,
-	  ic3,
-	  ic4,
-	  /**/ ic5,
-	  /**/ ic6,
-	  /**/ ic7,
-	  ic8 /**/,
-	  ic9,
-	  /**/ ica,
-	  icb,
-	  icc,
-	  /**/ icd,
-	  ice,
-	  /**/ icf,
-	  id0,
-	  /**/ id1,
-	  id2,
-	  id3,
-	  id4,
-	  id5,
-	  /**/ id6,
-	  /**/ id7,
-	  id8 /**/,
-	  id9,
-	  /**/ ida,
-	  idb,
-	  idc,
-	  idd,
-	  ide,
-	  /**/ idf,
-	  ie0,
-	  /**/ ie1,
-	  ie2,
-	  ie3,
-	  ie4,
-	  /**/ ie5,
-	  /**/ ie6,
-	  /**/ ie7,
-	  ie8 /**/,
-	  ie9,
-	  /**/ iea,
-	  /**/ ieb,
-	  iec,
-	  /**/ ied,
-	  iee,
-	  /**/ ief,
-	  if0,
-	  /**/ if1,
-	  if2,
-	  if3,
-	  if4,
-	  if5,
-	  /**/ if6,
-	  /**/ if7,
-	  if8 /**/,
-	  if9,
-	  /**/ ifa,
-	  ifb,
-	  /**/ ifc,
-	  ifd,
-	  ife,
-	  /**/ iff
-	);
-
-	// jumping ===================================================================================
-	function i20(name) {
-	  pushReturnAddress();
-	  jump(name, "subroutine ");
-	  return;
-
-	  function pushReturnAddress() {
-	    let addrBeforeNextInstruction = exports.reg.PC + 1;
-	    // exports.reg.PC + 1 because we get a word, i.e., 2 byte in jump()
-	    exports.memory.pushWordToStack(new WordEntry(addrBeforeNextInstruction));
+	class CodeLine {
+	  constructor(content, number) {
+	    this.content = content;
+	    this.number = number;
+	    this.labelAddresses;
+	    this.regExp = {
+	      addressOnly: /^\*[\s]*=[\s]*([\$]?[0-9a-f]*)$/,
+	      label: /^(\w+):.*$/,
+	      commandWithLeadLabel: /^\w+:\s*(\w+)\s*.*$/,
+	      command: /^(\w\w\w)\s*.*$/,
+	      paramWithLeadLabel: /^\w+:\s*\w+\s+(.*?)/,
+	      param: /^\w\w\w+\s+[+-]?(.*?)/,
+	    };
 	  }
-	}
-	function i4c(name) {
-	  jump(name, "");
-	}
-	function i6c(name) {
-	  jump(name, "");
-	  // ierr(name + ": [UNIMPL] jumping with absoluteIndirect addressingMode");
-	}
-	function jump(name, msg) {
-	  let addr = exports.memory.readWord(exports.reg.PC).value;
-	  exports.reg.PC = addr; // the actual jump to address
-	  consoleDebug({
-	    msg:
-	      name +
-	      ": jumping to " +
-	      msg +
-	      exports.labelAddresses.getLabel(exports.reg.PC) +
-	      fmtToHexWordBr(exports.reg.PC) +
-	      "[lineNo: " +
-	      exports.addressLineNumbers[exports.reg.PC].lineNumber +
-	      "]",
-	    bold: true,
-	  });
-	}
-	// returning ---------------------------------------------------------------------------------
-	function i40(name) {
-	  // this actually should pop PC from stack and pop flags/processor state from stack
-	  consoleDebug({ msg: name + ": returning from interrupt", bold: true });
-	}
-	function i60(name) {
-	  let returnAddr = exports.memory.popWordFromStack().value;
-	  exports.reg.PC = returnAddr;
-	  consoleDebug({
-	    msg:
-	      name +
-	      ": returning from subroutine to " +
-	      exports.labelAddresses.getLabel(exports.reg.PC) +
-	      fmtToHexWordBr(exports.reg.PC),
-	  });
-	}
 
-	// branching =================================================================================
-	function i10(name) {
-	  jumpBranch({ type: "BPL", name: name });
-	}
-	function i30(name) {
-	  jumpBranch({ type: "BMI", name: name });
-	}
-	function i50(name) {
-	  jumpBranch({ type: "BVC", name: name });
-	}
-	function i70(name) {
-	  jumpBranch({ type: "BVS", name: name });
-	}
-	function i90(name) {
-	  jumpBranch({ type: "BCC", name: name });
-	}
-	function ib0(name) {
-	  jumpBranch({ type: "BCS", name: name });
-	}
-	function id0(name) {
-	  jumpBranch({ type: "BNE", name: name });
-	}
-	function if0(name) {
-	  jumpBranch({ type: "BEQ", name: name });
-	}
-
-	function jumpBranch({ type = "", name = "" } = {}) {
-	  let conditions = {
-	    BCC: exports.flags.carry.isClear(),
-	    BCS: exports.flags.carry.isSet(),
-	    BNE: exports.flags.zero.isClear(),
-	    BEQ: exports.flags.zero.isSet(),
-	    BVC: exports.flags.overflow.isClear(),
-	    BVS: exports.flags.overflow.isSet(),
-	    BPL: exports.flags.negative.isClear(),
-	    BMI: exports.flags.negative.isSet(),
-	  };
-
-	  let offset = exports.memory.readByte(exports.reg.PC).value;
-	  exports.reg.PC++; // advance program counter
-	  if (!conditions[type]) {
-	    consoleDebug({
-	      msg:
-	        name +
-	        ": skipping branch, moving on to " +
-	        fmtToHexWord(exports.reg.PC),
-	    });
+	  scanLabel(labelAddresses) {
+	    this.labelAddresses = labelAddresses;
+	    if (this.#isLabel()) {
+	      if (this.label in this.labelAddresses) {
+	        let defLineNumber = this.labelAddresses[this.label].lineNumber;
+	        raiseLabelError(
+	          codeLine.number,
+	          "Label '" + this.label + "' already defined at line " + defLineNumber
+	        );
+	        return;
+	      }
+	      // Use label as Address provisionaly => will be read correctly later!
+	      labelAddresses[this.label] = new LabelAddress(this.label, this.number);
+	    }
 	    return;
 	  }
 
-	  exports.reg.PC = getBranchAddress(offset); // the actual jump means setting the program counter
-	  consoleDebug({
-	    msg:
-	      name +
-	      ": branching to " +
-	      exports.labelAddresses.getLabel(exports.reg.PC) +
-	      fmtToHexWordBr(exports.reg.PC) +
-	      "[lineNo: " +
-	      exports.addressLineNumbers[exports.reg.PC].lineNumber +
-	      "]",
-	    bold: true,
-	  });
-	  return;
-
-	  function getBranchAddress(offset) {
-	    if (offset > 0x7f) {
-	      //0x7f = 127
-	      return exports.reg.PC - (0x100 - offset);
+	  compileLine({ memory, lineBeforeThisWasAddressOnly = false } = {}) {
+	    if (this.#isBlank()) {
+	      return 0;
 	    }
-	    return exports.reg.PC + offset;
+	    if (this.#isOnlyAddress()) {
+	      memory.defaultCodePC = this.address;
+	      return -1; // to set lineBeforeThisWasAddressOnly
+	    }
+	    if (this.#isLabel()) {
+	      this.labelAddresses[this.label] = new LabelAddress(
+	        memory.defaultCodePC,
+	        this.number
+	      );
+	      if (!this.#isCommandWithLeadLabel()) {
+	        return 0; //lineLen = 0 and return here since labels might be recognized as commands
+	      }
+	    }
+
+	    let commandName = this.commandName;
+	    if (commandName == "") {
+	      return 0; // lineLen = 0
+	    }
+
+	    if (commandName in Command.opCodes) {
+	      let command = new Command(commandName, this.number);
+
+	      let param = new ParamFactory().create({
+	        name: this.paramName,
+	        lineNumber: this.number,
+	        labelAddresses: this.labelAddresses,
+	        commandName: commandName,
+	        memory: memory,
+	      });
+
+	      return command.compileOpCode(param, memory, lineBeforeThisWasAddressOnly);
+	    }
+	    raiseSyntaxError(this.number, "Command '" + commandName + "' undefined");
+	    return 0;
+	  }
+	  get address() {
+	    let addr = this.#extract(this.regExp.addressOnly);
+	    addr = this.#addrToHexOrDec(addr);
+	    return addr;
+	  }
+	  get label() {
+	    return this.#extract(this.regExp.label);
+	  }
+	  get commandName() {
+	    let lineContent = this.content;
+	    let commandName = "";
+	    if (lineContent.match(this.regExp.commandWithLeadLabel)) {
+	      commandName = this.#extract(
+	        this.regExp.commandWithLeadLabel
+	      ).toUpperCase();
+	    } else if (lineContent.match(this.regExp.command)) {
+	      commandName = this.#extract(this.regExp.command).toUpperCase();
+	    } else {
+	      raiseSyntaxError(
+	        this.number,
+	        "Command in line '" + this.content + "' undefined"
+	      );
+	    }
+	    return commandName;
+	  }
+	  get paramName() {
+	    let lineContent = this.content;
+	    let paramName = "";
+	    if (lineContent.match(this.regExp.paramWithLeadLabel)) {
+	      paramName = this.#extract(this.regExp.paramWithLeadLabel).replace(
+	        /[ ]/g,
+	        ""
+	      );
+	    } else if (lineContent.match(this.regExp.param)) {
+	      paramName = this.#extract(this.regExp.param).replace(/[ ]/g, "");
+	    }
+	    return paramName;
+	  }
+
+	  noCode() {
+	    if (this.content === "") {
+	      return true;
+	    }
+	    return false;
+	  }
+
+	  #isBlank() {
+	    if (this.content == "") {
+	      return true;
+	    }
+	    return false;
+	  }
+	  #isOnlyAddress() {
+	    if (this.content.match(this.regExp.addressOnly)) {
+	      return true;
+	    }
+	    return false;
+	  }
+	  #isLabel() {
+	    if (this.content.match(this.regExp.label)) {
+	      return true;
+	    }
+	    return false;
+	  }
+	  #isCommandWithLeadLabel() {
+	    if (this.content.match(this.regExp.commandWithLeadLabel)) {
+	      return true;
+	    }
+	    return false;
+	  }
+	  #extract(regExp) {
+	    return this.content.replace(regExp, "$1");
+	  }
+	  #addrToHexOrDec(addr) {
+	    if (addr[0] == "$") {
+	      addr = addr.replace(/^\$/, ""); //strip leading dollar sign
+	      addr = parseInt(addr, 16);
+	    } else {
+	      addr = parseInt(addr, 10);
+	    }
+	    this.#validateAddress(addr);
+	    return addr;
+	  }
+	  #validateAddress(addr) {
+	    if (addr < 0x0 || addr > 0xffff) {
+	      raiseRangeError(
+	        "Address '" + addr + "' out of range(" + 0x0 + ", " + 0xfff + ")"
+	      );
+	    }
+	    return;
+	  }
+	}
+	CodeLine.prototype.toString = function () {
+	  return "line " + this.number + ": " + this.content;
+	};
+
+	class Compiler {
+	  constructor(plainCode) {
+	    this.plainCode = plainCode;
+	    this.codeLen = 0;
+	    this.codeLines = new Array();
+	    this.labelAddresses = new LabelAddresses();
+	    this.memory = new Memory();
+	  }
+
+	  preprocessCode() {
+	    let code = this.plainCode;
+	    code += "\n\n";
+	    code = code.split("\n");
+	    code.forEach((line, lineNumber) => {
+	      line = removeComments(line);
+	      line = trimLine(line);
+	      this.codeLines.push(new CodeLine(line, lineNumber + 1));
+	    });
+	    return this;
+
+	    // helper
+	    function removeComments(line) {
+	      return line.replace(/^(.*?);.*/, "$1");
+	    }
+	    function trimLine(line) {
+	      line = line.replace(/^\s+/, "");
+	      line = line.replace(/\s+$/, "");
+	      return line;
+	    }
+	  }
+
+	  scanLabels() {
+	    this.codeLines.forEach((codeLine) => {
+	      codeLine.scanLabel(this.labelAddresses);
+	    });
+	    this.labelAddresses.printLabelCount();
+	    return this;
+	  }
+
+	  compile() {
+	    let lineBeforeThisWasAddressOnly = false;
+	    this.codeLines.forEach((codeLine) => {
+	      const codeLen = codeLine.compileLine({
+	        memory: this.memory,
+	        lineBeforeThisWasAddressOnly: lineBeforeThisWasAddressOnly,
+	      });
+	      if (codeLen >= 0) {
+	        this.codeLen += codeLen;
+	        lineBeforeThisWasAddressOnly = false;
+	      } else {
+	        // do not count, if there was a line with only an address directly before this line
+	        lineBeforeThisWasAddressOnly = true;
+	      }
+	    });
+	    // insert 0x00 at largest used memory address to mark end of memory
+	    this.memory.writeByte(0xa28, new ByteEntry(0x00, -1));
+
+	    return this;
+	  }
+
+	  insertLabelAddressesToMemory() {
+	    if (this.noCode()) {
+	      return this;
+	    }
+	    for (let codePC = 0x600; codePC < 0xa28; codePC++) {
+	      this.labelAddresses.insertToMemory(codePC, this.memory);
+	    }
+
+	    return this;
+	  }
+
+	  noCode() {
+	    if (this.codeLines.every((v) => v.noCode() === true)) {
+	      return true;
+	    }
+	    return false;
 	  }
 	}
 
-	// INC increment =============================================================================
+	function getAddressingModeAddr({
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
+	  let zp;
+	  let addr;
+	  if (
+	    ["immediate", "immediateRelativePlus", "immediateRelativeMinus"].includes(
+	      addrMode
+	    )
+	  ) {
+	    addr = exports.reg.PC;
+	    exports.reg.PC++; //advance program counter;
+	    return addr;
+	  }
+
+	  switch (addrMode) {
+	    case "absolute":
+	    case "absoluteX":
+	    case "absoluteY":
+	    case "absoluteIndirect":
+	      addr = exports.memory.readWord(exports.reg.PC).value;
+	      exports.reg.PC += 2; //advance program counter by 2 = #byte in word
+	      break;
+	    case "zeroPage":
+	    case "zeroPageX":
+	    case "zeroPageY":
+	    case "(zeroPage, X)":
+	    case "(zeroPage), Y":
+	      zp = addr = exports.memory.readByte(exports.reg.PC).value;
+	      exports.reg.PC++; // advance program counter
+	  }
+	  switch (addrMode) {
+	    case "absoluteIndirect":
+	      addr = exports.memory.readWord(addr).value;
+	      break;
+	    case "(zeroPage, X)":
+	      zp = getLowerByte(addr + exports.reg.X);
+	    case "(zeroPage), Y": // and "(zeroPage, X), due to missing break!!"
+	      let lowerByte = exports.memory.readByte(zp).value;
+	      let upperByte = exports.memory.readByte(zp + 1).value;
+	      addr = (upperByte << 8) + lowerByte;
+	      break;
+	  }
+
+	  addr += getRegisterAddr(addrMode.slice(-1));
+
+	  if (onlyLowerByte) {
+	    addr = getLowerByte(addr);
+	  }
+	  return addr;
+
+	  function getRegisterAddr(register) {
+	    switch (register) {
+	      case "X":
+	        return exports.reg.X;
+	      case "Y": // for "(zeroPage), Y" as well
+	        return exports.reg.Y;
+	      default:
+	        return 0x00;
+	    }
+	  }
+	}
+
+	// Add memory to accumulator with carry
+	function i69(name) {
+	  add({ name: name, addrMode: "immediate" });
+	}
+	function i6d(name) {
+	  add({ name: name, addrMode: "absolute" });
+	}
+	function i7d(name) {
+	  add({ name: name, addrMode: "absoluteX" });
+	}
+	function i79(name) {
+	  add({ name: name, addrMode: "absoluteY" });
+	}
+	function i65(name) {
+	  add({ name: name, addrMode: "zeroPage" });
+	}
+	function i75(name) {
+	  add({ name: name, addrMode: "zeroPageX" });
+	}
+	// TODO: why i75 did this?? {exports.flags.setFromByte(exports.flags.getByteClearedOn("carry") | (value & 1));}
+	function i61(name) {
+	  add({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function i71(name) {
+	  add({ name: name, addrMode: "(zeroPage), Y" });
+	}
+
+	function add({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
+	  let addr = getAddressingModeAddr({
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
+	  let value = exports.memory.readByte(addr).value;
+
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": adding " +
+	      fmtToHex(value) +
+	      " to regA=" +
+	      fmtToHexBr(exports.reg.A),
+	  });
+	  exports.reg.A = addTest(value);
+	  exports.flags.toggleZeroAndNegative(exports.reg.A);
+	  return;
+
+	  function addTest(value) {
+	    if ((exports.reg.A ^ value) & 0x80) {
+	      exports.flags.overflow._set();
+	    } else {
+	      exports.flags.overflow.clear();
+	    }
+
+	    let tmp;
+	    if (exports.flags.decimal.isSet()) {
+	      tmp = (exports.reg.A & 0xf) + (value & 0xf) + exports.flags.carry.value;
+	      if (tmp >= 10) {
+	        tmp = 0x10 | ((tmp + 6) & 0xf);
+	      }
+
+	      tmp += (exports.reg.A & 0xf0) + (value & 0xf0);
+	      if (tmp >= 160) {
+	        exports.flags.carry._set();
+	        if (exports.flags.exports.flagsClearedOn("overflow") && tmp >= 0x180) {
+	          exports.flags.overflow.clear();
+	        }
+	        tmp += 0x60;
+	      } else {
+	        exports.flags.carry.clear();
+	        if (exports.flags.getByteClearedOn("overflow") && tmp < 0x80) {
+	          exports.flags.overflow.clear();
+	        }
+	      }
+	    } else {
+	      tmp = exports.reg.A + value + exports.flags.carry.value;
+	      if (tmp >= 0x100) {
+	        exports.flags.carry._set();
+	        if (exports.flags.getByteClearedOn("overflow") && tmp >= 0x180) {
+	          exports.flags.overflow.clear();
+	        }
+	      } else {
+	        exports.flags.carry.clear();
+	        if (exports.flags.getByteClearedOn("overflow") && tmp < 0x80) {
+	          exports.flags.overflow.clear();
+	        }
+	      }
+	    }
+	    return getLowerByte(tmp);
+	  }
+	}
+
+	function _eb(name) {
+	  ie9(name);
+	} // same as ie9, SUB immediate
+
+	// Subtract memory from accumulator with borrow
+	function ie9(name) {
+	  substract({ name: name, addrMode: "immediate" });
+	}
+	function ied(name) {
+	  substract({ name: name, addrMode: "absolute" });
+	}
+	function ifd(name) {
+	  substract({ name: name, addrMode: "absoluteX" });
+	}
+	function if9(name) {
+	  substract({ name: name, addrMode: "absoluteY" });
+	}
+	function ie5(name) {
+	  substract({ name: name, addrMode: "zeroPage" });
+	}
+	function if5(name) {
+	  substract({ name: name, addrMode: "zeroPageX" });
+	}
+	// TODO: why if5 did this?? {exports.flags.setFromByte(exports.flags.getByteClearedOn("carry") | (value & 1));}
+	function ie1(name) {
+	  substract({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function if1(name) {
+	  substract({ name: name, addrMode: "(zeroPage), Y" });
+	}
+
+	function substract({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
+	  let addr = getAddressingModeAddr({
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
+	  let value = exports.memory.readByte(addr).value;
+
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": substracting " +
+	      fmtToHex(value) +
+	      " from regA=" +
+	      fmtToHexBr(exports.reg.A),
+	  });
+	  exports.reg.A = testSubstract(value);
+	  exports.flags.toggleZeroAndNegative(exports.reg.A);
+
+	  return;
+
+	  function testSubstract(value) {
+	    if ((exports.reg.A ^ value) & 0x80) {
+	      vflag = 1;
+	    } else {
+	      vflag = 0;
+	    }
+
+	    let tmp;
+	    let w;
+	    if (exports.flags.decimal.isSet()) {
+	      tmp =
+	        0xf + (exports.reg.A & 0xf) - (value & 0xf) + exports.flags.carry.value;
+	      if (tmp < 0x10) {
+	        w = 0;
+	        tmp -= 6;
+	      } else {
+	        w = 0x10;
+	        tmp -= 0x10;
+	      }
+	      w += 0xf0 + (exports.reg.A & 0xf0) - (value & 0xf0);
+	      if (w < 0x100) {
+	        exports.flags.carry.clear();
+	        if (exports.flags.getByteClearedOn("overflow") && w < 0x80) {
+	          exports.flags.overflow.clear();
+	        }
+	        w -= 0x60;
+	      } else {
+	        exports.flags.carry._set();
+	        if (exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
+	          exports.flags.overflow.clear();
+	        }
+	      }
+	      w += tmp;
+	    } else {
+	      w = 0xff + exports.reg.A - value + exports.flags.carry.value;
+	      if (w < 0x100) {
+	        exports.flags.carry.clear();
+	        if (exports.flags.getByteClearedOn("overflow") && w < 0x80) {
+	          exports.flags.overflow.clear();
+	        }
+	      } else {
+	        exports.flags.carr._set();
+	        if (exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
+	          exports.flags.overflow.clear();
+	        }
+	      }
+	    }
+	    return getLowerByte(w);
+	  }
+	}
+
+	function ic9(name) {
+	  compare({ name: name, addrMode: "immediate" });
+	}
+	function icd(name) {
+	  compare({ name: name, addrMode: "absolute" });
+	}
+	function idd(name) {
+	  compare({ name: name, addrMode: "absoluteX" });
+	}
+	function id9(name) {
+	  compare({ name: name, addrMode: "absoluteY" });
+	}
+	function ic5(name) {
+	  compare({ name: name, addrMode: "zeroPage" });
+	}
+	function id5(name) {
+	  compare({ name: name, addrMode: "zeroPageX" });
+	}
+	function ic1(name) {
+	  compare({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function id1(name) {
+	  compare({ name: name, addrMode: "(zeroPage), Y" });
+	}
+	// CMP: Compare Memory and Index X
+	function ie0(name) {
+	  compare({ name: name, register: "X", addrMode: "immediate" });
+	}
+	function iec(name) {
+	  compare({ name: name, register: "X", addrMode: "absolute" });
+	}
+	function ie4(name) {
+	  compare({ name: name, register: "X", addrMode: "zeroPage" });
+	}
+	// CMP: Compare Memory and Index Y
+	// TODO: Was this old code for ic0 wrong, because its inconsitent?
+	// if( (exports.reg.Y+value) > 0xff ) exports.flags.zero._set(); else exports.flags.zero.clear();
+	// value = (exports.reg.Y-value);
+	function ic0(name) {
+	  compare({ name: name, register: "Y", addrMode: "immediate" });
+	}
+	function icc(name) {
+	  compare({ name: name, register: "Y", addrMode: "absolute" });
+	}
+	function ic4(name) {
+	  compare({ name: name, register: "Y", addrMode: "zeroPage" });
+	}
+
+	function compare({
+	  name = "",
+	  register = "A",
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
+	  let regValue = exports.reg[register];
+	  let addr = getAddressingModeAddr({
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
+	  let value = exports.memory.readByte(addr).value;
+
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": compare reg" +
+	      register +
+	      "=" +
+	      fmtToHexBr(regValue) +
+	      " with " +
+	      fmtToHex(value),
+	  });
+	  let compareResult = compareTest(regValue, value);
+	  exports.flags.toggleZeroAndNegative(compareResult);
+	  return;
+
+	  function compareTest(regValue, value) {
+	    if (regValue >= value) {
+	      // Thanks, "Guest"
+	      exports.flags.zero._set();
+	    } else {
+	      exports.flags.zero.clear();
+	    }
+	    return regValue - value;
+	  }
+	}
+
 	function ie8(name) {
 	  increment({ name: name, impliedRegister: "X" });
 	}
@@ -35069,93 +33757,546 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  return addr;
 	}
 
-	// CMP: Compare Memory and Accumulator =======================================================
-	function ic9(name) {
-	  compare({ name: name, addrMode: "immediate" });
-	}
-	function icd(name) {
-	  compare({ name: name, addrMode: "absolute" });
-	}
-	function idd(name) {
-	  compare({ name: name, addrMode: "absoluteX" });
-	}
-	function id9(name) {
-	  compare({ name: name, addrMode: "absoluteY" });
-	}
-	function ic5(name) {
-	  compare({ name: name, addrMode: "zeroPage" });
-	}
-	function id5(name) {
-	  compare({ name: name, addrMode: "zeroPageX" });
-	}
-	function ic1(name) {
-	  compare({ name: name, addrMode: "(zeroPage, X)" });
-	}
-	function id1(name) {
-	  compare({ name: name, addrMode: "(zeroPage), Y" });
-	}
-	// CMP: Compare Memory and Index X
-	function ie0(name) {
-	  compare({ name: name, register: "X", addrMode: "immediate" });
-	}
-	function iec(name) {
-	  compare({ name: name, register: "X", addrMode: "absolute" });
-	}
-	function ie4(name) {
-	  compare({ name: name, register: "X", addrMode: "zeroPage" });
-	}
-	// CMP: Compare Memory and Index Y
-	// TODO: Was this old code for ic0 wrong, because its inconsitent?
-	// if( (exports.reg.Y+value) > 0xff ) exports.flags.zero._set(); else exports.flags.zero.clear();
-	// value = (exports.reg.Y-value);
-	function ic0(name) {
-	  compare({ name: name, register: "Y", addrMode: "immediate" });
-	}
-	function icc(name) {
-	  compare({ name: name, register: "Y", addrMode: "absolute" });
-	}
-	function ic4(name) {
-	  compare({ name: name, register: "Y", addrMode: "zeroPage" });
+	function ierr(name) {
+	  let message = name + " illegal Opcode not allowed, skipping";
+	  raiseRunTimeError(fmtToHexWord(exports.reg.PC - 1), message);
+	  console.warn(message);
 	}
 
-	function compare({
+	// Set and Clear [implied addressing mode]=====================================================
+	// TODO: i58 and i78 are not implemented?
+	function i58(name) {
+	  exports.flags.clear();
+	  console.warn(name + ": clearing interrupt disable status");
+	}
+	function i78(name) {
+	  exports.flags._set();
+	  console.warn(name + ": setting interrupt disable status");
+	}
+	function i18(name) {
+	  clearFlag(name, "carry");
+	}
+	function i38(name) {
+	  setFlag(name, "carry");
+	}
+	function id8(name) {
+	  clearFlag(name, "decimal");
+	}
+	function if8(name) {
+	  setFlag(name, "decimal");
+	}
+	function ib8(name) {
+	  clearFlag(name, "overflow");
+	}
+	// clearValue + SetValue = 0xff = 255
+	function clearFlag(name, flagName) {
+	  consoleDebug({ msg: name + ": clearing " + flagName + " flag" });
+	  exports.flags[flagName].clear();
+	}
+	function setFlag(name, flagName) {
+	  consoleDebug({ msg: name + ": setting " + flagName + " flag" });
+	  exports.flags[flagName]._set();
+	}
+
+	// jumping ===================================================================================
+	function i20(name) {
+	  pushReturnAddress();
+	  jump({ name: name, msg: "subroutine " });
+	  return;
+
+	  function pushReturnAddress() {
+	    let addrBeforeNextInstruction = exports.reg.PC + 1;
+	    // exports.reg.PC + 1 because we get a word, i.e., 2 byte in jump()
+	    exports.memory.pushWordToStack(new WordEntry(addrBeforeNextInstruction));
+	  }
+	}
+	function i4c(name) {
+	  jump({ name: name, addrMode: "absolute" });
+	}
+
+	function i6c(name) {
+	  jump({ name: name, addrMode: "absoluteIndirect" });
+	  // ierr(name + ": [UNIMPL] jumping with absoluteIndirect addressingMode");
+	}
+	function jump({ name = "", msg = "", addrMode = "absolute" } = {}) {
+	  const addr = getAddressingModeAddr({ addrMode: addrMode });
+	  exports.reg.PC = addr; // the actual jump to address
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": jumping to " +
+	      msg +
+	      exports.labelAddresses.getLabel(exports.reg.PC) +
+	      fmtToHexWordBr(exports.reg.PC) +
+	      "[lineNo: " +
+	      exports.addressLineNumbers[exports.reg.PC].lineNumber +
+	      "]",
+	    bold: true,
+	  });
+	}
+
+	function i4cRelativePlus(name) {
+	  jumpRelative({ name: name, type: "Plus" });
+	}
+	function i4cRelativeMinus(name) {
+	  jumpRelative({ name: name, type: "Minus" });
+	}
+	function jumpRelative({
+	  name = "",
+	  type = "Plus",
+	  msg = "",
+	  addrMode = "immediateRelative",
+	} = {}) {
+	  const addr = getAddressingModeAddr({ addrMode: addrMode + type });
+	  const value = exports.memory.readByte(addr).value;
+	  const jumpAddr =
+	    type === "Plus"
+	      ? (exports.reg.PC + value) % exports.memory.size
+	      : (exports.reg.PC - value) % exports.memory.size;
+
+	  exports.reg.PC = jumpAddr; // the actual jump to address
+
+	  const addressLineNumber = exports.addressLineNumbers[exports.reg.PC];
+	  const lineNo =
+	    typeof addressLineNumber == "undefined"
+	      ? ""
+	      : "[lineNo: " + addressLineNumber.lineNumber + "]";
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": jumping to " +
+	      exports.labelAddresses.getLabel(exports.reg.PC) +
+	      fmtToHexWordBr(exports.reg.PC) +
+	      lineNo,
+	    bold: true,
+	  });
+	}
+	// returning ---------------------------------------------------------------------------------
+	function i40(name) {
+	  // this actually should pop flags/processor state from stack and pop PC from stack
+	  // const status = exports.memory.popByteFromStack();
+	  // const pc = exports.memory.popByteFromStack();
+	  consoleDebug({ msg: name + ": returning from interrupt", bold: true });
+	}
+	function i60(name) {
+	  const returnAddr = exports.memory.popWordFromStack().value;
+	  exports.reg.PC = returnAddr;
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": returning from subroutine to " +
+	      exports.labelAddresses.getLabel(exports.reg.PC) +
+	      fmtToHexWordBr(exports.reg.PC),
+	  });
+	}
+
+	// branching =================================================================================
+	function i10(name) {
+	  jumpBranch({ type: "BPL", name: name });
+	}
+	function i30(name) {
+	  jumpBranch({ type: "BMI", name: name });
+	}
+	function i50(name) {
+	  jumpBranch({ type: "BVC", name: name });
+	}
+	function i70(name) {
+	  jumpBranch({ type: "BVS", name: name });
+	}
+	function i90(name) {
+	  jumpBranch({ type: "BCC", name: name });
+	}
+	function ib0(name) {
+	  jumpBranch({ type: "BCS", name: name });
+	}
+	function id0(name) {
+	  jumpBranch({ type: "BNE", name: name });
+	}
+	function if0(name) {
+	  jumpBranch({ type: "BEQ", name: name });
+	}
+
+	function jumpBranch({ type = "", name = "" } = {}) {
+	  let conditions = {
+	    BCC: exports.flags.carry.isClear(),
+	    BCS: exports.flags.carry.isSet(),
+	    BNE: exports.flags.zero.isClear(),
+	    BEQ: exports.flags.zero.isSet(),
+	    BVC: exports.flags.overflow.isClear(),
+	    BVS: exports.flags.overflow.isSet(),
+	    BPL: exports.flags.negative.isClear(),
+	    BMI: exports.flags.negative.isSet(),
+	  };
+
+	  let offset = exports.memory.readByte(exports.reg.PC).value;
+	  exports.reg.PC++; // advance program counter
+	  if (!conditions[type]) {
+	    consoleDebug({
+	      msg:
+	        name +
+	        ": skipping branch, moving on to " +
+	        fmtToHexWord(exports.reg.PC),
+	    });
+	    return;
+	  }
+
+	  exports.reg.PC = getBranchAddress(offset); // the actual jump means setting the program counter
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": branching to " +
+	      exports.labelAddresses.getLabel(exports.reg.PC) +
+	      fmtToHexWordBr(exports.reg.PC) +
+	      "[lineNo: " +
+	      exports.addressLineNumbers[exports.reg.PC].lineNumber +
+	      "]",
+	    bold: true,
+	  });
+	  return;
+
+	  function getBranchAddress(offset) {
+	    if (offset > 0x7f) {
+	      //0x7f = 127
+	      return exports.reg.PC - (0x100 - offset);
+	    }
+	    return exports.reg.PC + offset;
+	  }
+	}
+
+	function _02(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _12(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _22(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _32(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _42(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _52(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _62(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _72(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _92(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _b2(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _d2(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f2(name);
+	}
+	function _f2(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  consoleDebug({ msg: name + ": KIL, processor locked" });
+	  exports.processorLocked = true;
+	}
+
+	// load accumulator with memory LDA
+	function ia9(name) {
+	  load({ name: name, addrMode: "immediate" });
+	}
+	function iad(name) {
+	  load({ name: name, addrMode: "absolute" });
+	}
+	function ibd(name) {
+	  load({ name: name, addrMode: "absoluteX" });
+	}
+	function ib9(name) {
+	  load({ name: name, addrMode: "absoluteY" });
+	}
+	function ia5(name) {
+	  load({ name: name, addrMode: "zeroPage" });
+	}
+	function ib5(name) {
+	  load({ name: name, addrMode: "zeroPageX", onlyLowerByte: true });
+	}
+	// TODO: why do we bytecut here?
+	function ia1(name) {
+	  load({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function ib1(name) {
+	  load({ name: name, addrMode: "(zeroPage), Y" });
+	}
+
+	// load index X with memory
+	function ia2(name) {
+	  load({ name: name, register: "X", addrMode: "immediate" });
+	}
+	function iae(name) {
+	  load({ name: name, register: "X", addrMode: "absolute" });
+	}
+	function ibe(name) {
+	  load({ name: name, register: "X", addrMode: "absoluteY" });
+	}
+	function ia6(name) {
+	  load({ name: name, register: "X", addrMode: "zeroPage" });
+	}
+	function ib6(name) {
+	  load({ name: name, register: "X", addrMode: "zeroPageY" });
+	}
+
+	// load index Y with memory
+	function ia0(name) {
+	  load({ name: name, register: "Y", addrMode: "immediate" });
+	}
+	function iac(name) {
+	  load({ name: name, register: "Y", addrMode: "absolute" });
+	}
+	function ibc(name) {
+	  load({ name: name, register: "Y", addrMode: "absoluteX" });
+	}
+	function ia4(name) {
+	  load({ name: name, register: "Y", addrMode: "zeroPage" });
+	}
+	function ib4(name) {
+	  load({ name: name, register: "Y", addrMode: "zeroPageX" });
+	}
+
+	function load({
 	  name = "",
 	  register = "A",
 	  addrMode = "",
 	  onlyLowerByte = false,
 	} = {}) {
-	  let regValue = exports.reg[register];
 	  let addr = getAddressingModeAddr({
 	    addrMode: addrMode,
 	    onlyLowerByte: onlyLowerByte,
 	  });
 	  let value = exports.memory.readByte(addr).value;
+	  let lineNumber = fmtToHex(addr);
+
+	  if (addr in exports.addressLineNumbers) {
+	    lineNumber +=
+	      "[lineNo: " + exports.addressLineNumbers[addr].lineNumber + "]";
+	  }
 
 	  consoleDebug({
 	    msg:
 	      name +
-	      ": compare reg" +
-	      register +
+	      ": loading value from addr " +
+	      lineNumber +
 	      "=" +
-	      fmtToHexBr(regValue) +
-	      " with " +
-	      fmtToHex(value),
+	      fmtToHex(value) +
+	      " to reg" +
+	      register,
 	  });
-	  let compareResult = compareTest(regValue, value);
-	  exports.flags.toggleZeroAndNegative(compareResult);
+	  exports.reg[register] = value;
+	  exports.flags.toggleZeroAndNegative(value);
 	  return;
-
-	  function compareTest(regValue, value) {
-	    if (regValue >= value) {
-	      // Thanks, "Guest"
-	      exports.flags.zero._set();
-	    } else {
-	      exports.flags.zero.clear();
-	    }
-	    return regValue - value;
-	  }
 	}
-	// Logic AND memory with Accumulator==========================================================
+
+	function _a7(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  load({ name: name, addrMode: "zeroPage" });
+	  exports.reg.X = exports.reg.A;
+	}
+	function _b7(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  load({ name: name, addrMode: "zeroPageY" });
+	  exports.reg.X = exports.reg.A;
+	}
+	function _af(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  load({ name: name, addrMode: "absolute" });
+	  exports.reg.X = exports.reg.A;
+	}
+	function _bf(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  load({ name: name, addrMode: "absoluteY" });
+	  exports.reg.X = exports.reg.A;
+	}
+	function _a3(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  load({ name: name, addrMode: "(zeroPage, X)" });
+	  exports.reg.X = exports.reg.A;
+	}
+	function _b3(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  load({ name: name, addrMode: "(zeroPage), Y" });
+	  exports.reg.X = exports.reg.A;
+	}
+
+	function logicInstructionOnRegAWithMemoryResultToRegA({
+	  type = "",
+	  typeName = "",
+	  name = "",
+	  addrMode = "",
+	} = {}) {
+	  const addr = getAddressingModeAddr({ addrMode: addrMode });
+	  const value = exports.memory.readByte(addr).value;
+
+	  exports.reg.A = logicInstructionOnRegA({
+	    value: value,
+	    valueName: "memory",
+	    type: type,
+	    typeName: typeName,
+	    name: name,
+	  });
+	  return;
+	}
+
+	function logicInstructionOnRegAWithRegXResultToRegA({
+	  type = "",
+	  typeName = "",
+	  name = "",
+	} = {}) {
+	  exports.reg.A = logicInstructionOnRegA({
+	    value: exports.reg.X,
+	    valueName: "regX",
+	    type: type,
+	    typeName: typeName,
+	    name: name,
+	  });
+
+	  return;
+	}
+
+	function logicInstructionOnRegAWithRegXResultToAddr({
+	  type = "",
+	  typeName = "",
+	  name = "",
+	  addrMode = "",
+	} = {}) {
+	  const value = logicInstructionOnRegA({
+	    value: exports.reg.X,
+	    valueName: "regX",
+	    type: type,
+	    typeName: typeName,
+	    name: name,
+	  });
+
+	  const addr = getAddressingModeAddr({ addrMode: addrMode });
+	  exports.memory.writeByte(addr, new ByteEntry(value));
+	  return;
+	}
+
+	function logicInstructionOnRegA({
+	  value = null,
+	  valueName = "",
+	  type = "",
+	  typeName = "",
+	  name = "",
+	} = {}) {
+	  return logicInstruction({
+	    valueA: exports.reg.A,
+	    valueAName: "regA",
+	    valueB: value,
+	    valueBName: valueName,
+	    type: type,
+	    typeName: typeName,
+	    name: name,
+	  });
+	}
+
+	function logicInstruction({
+	  valueA = null,
+	  valueAName = "",
+	  valueB = null,
+	  valueBName = "",
+	  type = "",
+	  typeName = "",
+	  name = "",
+	} = {}) {
+	  if (valueA == null || valueB == null) {
+	    const errorMsg =
+	      "logicInstruction of " +
+	      type +
+	      typeName +
+	      " has null value, valueA[" +
+	      valueA +
+	      "], valueB[" +
+	      valueB +
+	      "]";
+	    raiseRunTimeError(fmtToHexWord(exports.reg.PC - 1), errorMsg);
+	  }
+	  consoleDebug({
+	    msg:
+	      name +
+	      ": " +
+	      type +
+	      typeName +
+	      " on " +
+	      valueAName +
+	      fmtToHexBr(valueA) +
+	      " and " +
+	      valueBName +
+	      fmtToHexBr(valueB),
+	  });
+
+	  switch (type) {
+	    case "AND":
+	      valueA &= valueB;
+	      break;
+	    case "ORA":
+	      valueA |= valueB;
+	      break;
+	    case "EOR":
+	      valueA ^= valueB;
+	      break;
+	  }
+	  exports.flags.toggleZeroAndNegative(valueA);
+	  return valueA;
+	}
+
+	// Logic AND memory with Accumulator=[ A & M -> A ]===========================================
 	function i29(name) {
 	  and({ name: name, addrMode: "immediate" });
 	}
@@ -35181,117 +34322,135 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  and({ name: name, addrMode: "(zeroPage), Y" });
 	}
 
-	function and({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
-	  logicInstruction({
+	function and({ typeName = "", name = "", addrMode = "" } = {}) {
+	  logicInstructionOnRegAWithMemoryResultToRegA({
 	    type: "AND",
+	    typeName: typeName,
 	    name: name,
 	    addrMode: addrMode,
-	    onlyLowerByte: onlyLowerByte,
-	  });
-	}
-	//Logic Or Memory with Accumulator
-	function i09(name) {
-	  or({ name: name, addrMode: "immediate" });
-	}
-	function i0d(name) {
-	  or({ name: name, addrMode: "absolute" });
-	}
-	function i1d(name) {
-	  or({ name: name, addrMode: "absoluteX" });
-	}
-	function i19(name) {
-	  or({ name: name, addrMode: "absoluteY" });
-	}
-	function i05(name) {
-	  or({ name: name, addrMode: "zeroPage" });
-	}
-	function i15(name) {
-	  or({ name: name, addrMode: "zeroPageX" });
-	}
-	function i01(name) {
-	  or({ name: name, addrMode: "(zeroPage, X)" });
-	}
-	function i11(name) {
-	  or({ name: name, addrMode: "(zeroPage), Y" });
-	}
-
-	function or({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
-	  logicInstruction({
-	    type: "ORA",
-	    name: name,
-	    addrMode: addrMode,
-	    onlyLowerByte: onlyLowerByte,
-	  });
-	}
-	// Logic Exclusive-Or memory with accumulator
-	function i49(name) {
-	  xor({ name: name, addrMode: "immediate" });
-	}
-	function i4d(name) {
-	  xor({ name: name, addrMode: "absolute" });
-	}
-	function i5d(name) {
-	  xor({ name: name, addrMode: "absoluteX" });
-	}
-	function i59(name) {
-	  xor({ name: name, addrMode: "absoluteY" });
-	}
-	function i45(name) {
-	  xor({ name: name, addrMode: "zeroPage" });
-	}
-	function i55(name) {
-	  xor({ name: name, addrMode: "zeroPageX" });
-	}
-	function i41(name) {
-	  xor({ name: name, addrMode: "(zeroPage, X)" });
-	}
-	function i51(name) {
-	  xor({ name: name, addrMode: "(zeroPage), Y" });
-	}
-
-	function xor({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
-	  logicInstruction({
-	    type: "EOR",
-	    name: name,
-	    addrMode: addrMode,
-	    onlyLowerByte: onlyLowerByte,
 	  });
 	}
 
-	function logicInstruction({
-	  type = "",
+	// rotate left one bit
+	function i2a(name) {
+	  rotateLeft({ name: name, accumulator: true });
+	}
+	function i2e(name) {
+	  rotateLeft({ name: name, addrMode: "absolute" });
+	}
+	function i3e(name) {
+	  rotateLeft({ name: name, addrMode: "absoluteX" });
+	}
+	function i26(name) {
+	  rotateLeft({ name: name, addrMode: "zeroPage" });
+	}
+	function i36(name) {
+	  rotateLeft({ name: name, addrMode: "zeroPageX" });
+	}
+
+	function rotateLeft({
 	  name = "",
+	  accumulator = false,
 	  addrMode = "",
 	  onlyLowerByte = false,
 	} = {}) {
-	  let addr = getAddressingModeAddr({
+	  rotate({
+	    type: "LEFT",
+	    name: name,
+	    accumulator: accumulator,
 	    addrMode: addrMode,
 	    onlyLowerByte: onlyLowerByte,
 	  });
-	  let value = exports.memory.readByte(addr).value;
+	}
+	// rotate right one bit
+	function i6a(name) {
+	  rotateRight({ name: name, accumulator: true });
+	}
+	function i6e(name) {
+	  rotateRight({ name: name, addrMode: "absolute" });
+	}
+	function i7e(name) {
+	  rotateRight({ name: name, addrMode: "absoluteX" });
+	}
+	function i66(name) {
+	  rotateRight({ name: name, addrMode: "zeroPage" });
+	}
+	function i76(name) {
+	  rotateRight({ name: name, addrMode: "zeroPageX", onlyLowerByte: true });
+	}
+
+	function rotateRight({
+	  name = "",
+	  accumulator = false,
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
+	  rotate({
+	    type: "RIGHT",
+	    name: name,
+	    accumulator: accumulator,
+	    addrMode: addrMode,
+	    onlyLowerByte: onlyLowerByte,
+	  });
+	}
+	function rotate({
+	  type = "",
+	  name = "",
+	  accumulator = false,
+	  addrMode = "",
+	  onlyLowerByte = false,
+	} = {}) {
+	  let value = exports.reg.A;
+	  let addr;
+	  if (!accumulator) {
+	    addr = getAddressingModeAddr({
+	      addrMode: addrMode,
+	      onlyLowerByte: onlyLowerByte,
+	    });
+	    value = exports.memory.readByte(addr).value;
+	  }
+
+	  let oldValue = value;
+	  let byte;
+	  if (type === "LEFT") {
+	    byte = exports.flags.getByteClearedOn("carry") | ((value >> 7) & 1);
+	    value = (value << 1) | exports.flags.carry.value;
+	  } else {
+	    byte = exports.flags.getByteClearedOn("carry") | (value & 1);
+	    value >>= 1;
+	    if (exports.flags.carry.isSet()) {
+	      value |= 0x80;
+	    }
+	  }
+	  exports.flags.setFromByte(byte);
 
 	  consoleDebug({
 	    msg:
 	      name +
-	      ": " +
+	      ": rotate " +
+	      fmtToHex(oldValue) +
+	      " " +
 	      type +
-	      " on regA" +
-	      fmtToHexBr(exports.reg.A) +
-	      " and " +
+	      " to " +
 	      fmtToHex(value),
 	  });
-	  if (type === "AND") {
-	    value &= exports.reg.A;
-	  } else if (type === "ORA") {
-	    value |= exports.reg.A;
-	  } else if (type === "EOR") {
-	    value ^= exports.reg.A;
-	  }
+
 	  exports.flags.toggleZeroAndNegative(value);
-	  exports.reg.A = value;
-	  return;
+	  if (accumulator) {
+	    exports.reg.A = value;
+	    return;
+	  }
+	  let lineNumber = addr;
+	  if (addr in exports.addressLineNumbers) {
+	    lineNumber = exports.addressLineNumbers[addr];
+	  }
+	  exports.memory.writeByte(
+	    addr,
+	    new WordEntry(value, lineNumber).lowerByteEntry
+	  );
+	  return addr;
 	}
-	// Shift and Rotate ===========================================================================
+
 	// arithmetic shift one bit left
 	function i0a(name) {
 	  shiftLeft({ name: name, accumulator: true });
@@ -35410,407 +34569,481 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  );
 	  return addr;
 	}
-	// rotate left one bit
-	function i2a(name) {
-	  rotateLeft({ name: name, accumulator: true });
-	}
-	function i2e(name) {
-	  rotateLeft({ name: name, addrMode: "absolute" });
-	}
-	function i3e(name) {
-	  rotateLeft({ name: name, addrMode: "absoluteX" });
-	}
-	function i26(name) {
-	  rotateLeft({ name: name, addrMode: "zeroPage" });
-	}
-	function i36(name) {
-	  rotateLeft({ name: name, addrMode: "zeroPageX" });
-	}
 
-	function rotateLeft({
-	  name = "",
-	  accumulator = false,
-	  addrMode = "",
-	  onlyLowerByte = false,
-	} = {}) {
-	  rotate({
-	    type: "LEFT",
-	    name: name,
-	    accumulator: accumulator,
-	    addrMode: addrMode,
-	    onlyLowerByte: onlyLowerByte,
-	  });
+	// Illegal Ands ------------------------------------------------------------------------------
+	// AAC:= Logic AND memory with Accumulator, set carry on negative result
+	function _0b(name) {
+	  _2b(name);
 	}
-	// rotate right one bit
-	function i6a(name) {
-	  rotateRight({ name: name, accumulator: true });
-	}
-	function i6e(name) {
-	  rotateRight({ name: name, addrMode: "absolute" });
-	}
-	function i7e(name) {
-	  rotateRight({ name: name, addrMode: "absoluteX" });
-	}
-	function i66(name) {
-	  rotateRight({ name: name, addrMode: "zeroPage" });
-	}
-	function i76(name) {
-	  rotateRight({ name: name, addrMode: "zeroPageX", onlyLowerByte: true });
-	}
-
-	function rotateRight({
-	  name = "",
-	  accumulator = false,
-	  addrMode = "",
-	  onlyLowerByte = false,
-	} = {}) {
-	  rotate({
-	    type: "RIGHT",
-	    name: name,
-	    accumulator: accumulator,
-	    addrMode: addrMode,
-	    onlyLowerByte: onlyLowerByte,
-	  });
-	}
-	function rotate({
-	  type = "",
-	  name = "",
-	  accumulator = false,
-	  addrMode = "",
-	  onlyLowerByte = false,
-	} = {}) {
-	  let value = exports.reg.A;
-	  let addr;
-	  if (!accumulator) {
-	    addr = getAddressingModeAddr({
-	      addrMode: addrMode,
-	      onlyLowerByte: onlyLowerByte,
-	    });
-	    value = exports.memory.readByte(addr).value;
-	  }
-
-	  let oldValue = value;
-	  let byte;
-	  if (type === "LEFT") {
-	    byte = exports.flags.getByteClearedOn("carry") | ((value >> 7) & 1);
-	    value = (value << 1) | exports.flags.carry.value;
-	  } else {
-	    byte = exports.flags.getByteClearedOn("carry") | (value & 1);
-	    value >>= 1;
-	    if (exports.flags.carry.isSet()) {
-	      value |= 0x80;
-	    }
-	  }
-	  exports.flags.setFromByte(byte);
-
-	  consoleDebug({
-	    msg:
-	      name +
-	      ": shifting " +
-	      fmtToHex(oldValue) +
-	      " " +
-	      type +
-	      " to " +
-	      fmtToHex(value),
-	  });
-
-	  exports.flags.toggleZeroAndNegative(value);
-	  if (accumulator) {
-	    exports.reg.A = value;
+	function _2b(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
 	    return;
 	  }
-	  let lineNumber = addr;
-	  if (addr in exports.addressLineNumbers) {
-	    lineNumber = exports.addressLineNumbers[addr];
+	  and({
+	    name: name,
+	    typeName: " with CarrySet",
+	    addrMode: "immediate",
+	  });
+	  if (isNegative(exports.reg.A)) {
+	    exports.flags.carry._set();
 	  }
-	  exports.memory.writeByte(
-	    addr,
-	    new WordEntry(value, lineNumber).lowerByteEntry
-	  );
-	  return addr;
-	}
-	// Arithmetic =================================================================================
-	// Add memory to accumulator with carry
-	function i69(name) {
-	  add({ name: name, addrMode: "immediate" });
-	}
-	function i6d(name) {
-	  add({ name: name, addrMode: "absolute" });
-	}
-	function i7d(name) {
-	  add({ name: name, addrMode: "absoluteX" });
-	}
-	function i79(name) {
-	  add({ name: name, addrMode: "absoluteY" });
-	}
-	function i65(name) {
-	  add({ name: name, addrMode: "zeroPage" });
-	}
-	function i75(name) {
-	  add({ name: name, addrMode: "zeroPageX" });
-	}
-	// TODO: why i75 did this?? {exports.flags.setFromByte(exports.flags.getByteClearedOn("carry") | (value & 1));}
-	function i61(name) {
-	  add({ name: name, addrMode: "(zeroPage, X)" });
-	}
-	function i71(name) {
-	  add({ name: name, addrMode: "(zeroPage), Y" });
 	}
 
-	function add({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
-	  let addr = getAddressingModeAddr({
+	// AAX:= Logic AND X register with with Accumulator, save to Memory [ A & X -> M ]
+	function _8f(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  andRegAWithRegX({
+	    name: name,
+	    typeName: " regX with regA and save to memory",
+	    addrMode: "absolute",
+	    writeToAddr: true,
+	  });
+	}
+	function _87(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  andRegAWithRegX({
+	    name: name,
+	    typeName: " regX with regA and save to memory",
+	    addrMode: "zeroPage",
+	    writeToAddr: true,
+	  });
+	}
+	function _97(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  andRegAWithRegX({
+	    name: name,
+	    typeName: " regX with regA and save to memory",
+	    addrMode: "zeroPageY",
+	    writeToAddr: true,
+	  });
+	}
+	function _83(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  andRegAWithRegX({
+	    name: name,
+	    typeName: " regX with regA and save to memory",
+	    addrMode: "(zeroPage, X)",
+	    writeToAddr: true,
+	  });
+	} // AAX (indirect, X) => AAX (zp, X)
+
+	// ARR:= Logic AND memory with Accumulator, then rotate von bit right in accumulator and check bit 5 and 6
+	function _6b(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  and({
+	    name: name,
+	    typeName: " (, then rotate regA one bit right and check bit 5 and 6)",
+	    addrMode: "immediate",
+	  });
+	  rotateRight({ name: name, accumulator: true });
+	  const value = exports.reg.A;
+	  const valueBit5 = getBit(value, 5);
+	  const valueBit6 = getBit(value, 6);
+
+	  if (valueBit5 && valueBit6) {
+	    exports.flags.carry._set();
+	    exports.flags.overflow.clear();
+	  } else if (!valueBit5 && !valueBit6) {
+	    exports.flags.carry.clear();
+	    exports.flags.overflow.clear();
+	  } else if (valueBit5 && !valueBit6) {
+	    exports.flags.carry.clear();
+	    exports.flags.overflow._set();
+	  } else if (!valueBit5 && valueBit6) {
+	    exports.flags.carry._set();
+	    exports.flags.overflow._set();
+	  }
+	}
+
+	// ASR:= Logic AND memory with Accumulator, then shift von bit right in accumulator
+	function _4b(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  and({
+	    name: name,
+	    typeName: " (, then shift regA one bit right)",
+	    addrMode: "immediate",
+	  });
+	  shiftRight({ name: name, accumulator: true });
+	}
+
+	// ATX:= Logic AND memory with Accumulator, then transfer regA to regX
+	function _ab(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  and({
+	    name: name,
+	    typeName: " (, then transfer regA to regX)",
+	    addrMode: "immediate",
+	  });
+	  exports.reg.X = exports.reg.A;
+	}
+
+	// AXA:= Logic AND regX with Accumulator, then AND result with 7 and store in memory
+	// ToDo: Check assumption that result of first AND written to regA
+	function _9f(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  axa({ name: name, addrMode: "absoluteY" });
+	}
+	function _93(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  axa({ name: name, addrMode: "(zeroPage), Y" });
+	}
+
+	function axa({ name = "", addrMode = "" } = {}) {
+	  andRegAWithRegXToRegA({
+	    name: name,
+	    typeName: " regX with regA, then AND result with 7, then store to memory",
+	  });
+	  const value = exports.reg.A & 7; // second AND with 7
+	  const addr = getAddressingModeAddr({ addrMode: addrMode });
+	  exports.memory.writeByte(addr, new ByteEntry(value));
+	}
+
+	// AXS:= Logic AND regX with Accumulator, then store in regX, then substract byte from reg X without Borrow
+	function _cb(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  //   andRegAWithRegXToRegX({
+	  //     name: name,
+	  // 	typeName: " regX with regA to regX, then substract memory from regX without borrow",
+	  //   });
+	  //   const andResult = exports.reg.X
+	  //   const addr = getAddressingModeAddr({ addrMode: addrMode });
+	  //   let value = exports.memory.readByte(addr).value;
+	}
+	// function andRegAWithRegXToRegX({ name = "", typeName = "" } = {}) {
+	//   logicInstructionOnRegAWithRegXResultToRegX({
+	//     type: "AND",
+	//     typeName: typeName,
+	//     name: name,
+	//   });
+	// }
+
+	function andRegAWithRegX({ name = "", typeName = "", addrMode = "" } = {}) {
+	  logicInstructionOnRegAWithRegXResultToAddr({
+	    type: "AND",
+	    typeName: typeName,
+	    name: name,
 	    addrMode: addrMode,
-	    onlyLowerByte: onlyLowerByte,
 	  });
-	  let value = exports.memory.readByte(addr).value;
+	}
 
-	  consoleDebug({
-	    msg:
-	      name +
-	      ": adding " +
-	      fmtToHex(value) +
-	      " to regA=" +
-	      fmtToHexBr(exports.reg.A),
+	function andRegAWithRegXToRegA({ name = "", typeName = "" } = {}) {
+	  logicInstructionOnRegAWithRegXResultToRegA({
+	    type: "AND",
+	    typeName: typeName,
+	    name: name,
 	  });
-	  exports.reg.A = addTest(value);
-	  exports.flags.toggleZeroAndNegative(exports.reg.A);
-	  return;
+	}
 
-	  function addTest(value) {
-	    if ((exports.reg.A ^ value) & 0x80) {
-	      exports.flags.overflow._set();
-	    } else {
-	      exports.flags.overflow.clear();
-	    }
-
-	    let tmp;
-	    if (exports.flags.decimal.isSet()) {
-	      tmp = (exports.reg.A & 0xf) + (value & 0xf) + exports.flags.carry.value;
-	      if (tmp >= 10) {
-	        tmp = 0x10 | ((tmp + 6) & 0xf);
-	      }
-
-	      tmp += (exports.reg.A & 0xf0) + (value & 0xf0);
-	      if (tmp >= 160) {
-	        exports.flags.carry._set();
-	        if (exports.flags.exports.flagsClearedOn("overflow") && tmp >= 0x180) {
-	          exports.flags.overflow.clear();
-	        }
-	        tmp += 0x60;
-	      } else {
-	        exports.flags.carry.clear();
-	        if (exports.flags.getByteClearedOn("overflow") && tmp < 0x80) {
-	          exports.flags.overflow.clear();
-	        }
-	      }
-	    } else {
-	      tmp = exports.reg.A + value + exports.flags.carry.value;
-	      if (tmp >= 0x100) {
-	        exports.flags.carry._set();
-	        if (exports.flags.getByteClearedOn("overflow") && tmp >= 0x180) {
-	          exports.flags.overflow.clear();
-	        }
-	      } else {
-	        exports.flags.carry.clear();
-	        if (exports.flags.getByteClearedOn("overflow") && tmp < 0x80) {
-	          exports.flags.overflow.clear();
-	        }
-	      }
-	    }
-	    return getLowerByte(tmp);
+	// LAR:= Logic AND memory with regSP, transfer to regA, regX and regSP
+	function _bb(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
 	  }
-	}
-	// Subtract memory from accumulator with borrow
-	function ie9(name) {
-	  substract({ name: name, addrMode: "immediate" });
-	}
-	function ied(name) {
-	  substract({ name: name, addrMode: "absolute" });
-	}
-	function ifd(name) {
-	  substract({ name: name, addrMode: "absoluteX" });
-	}
-	function if9(name) {
-	  substract({ name: name, addrMode: "absoluteY" });
-	}
-	function ie5(name) {
-	  substract({ name: name, addrMode: "zeroPage" });
-	}
-	function if5(name) {
-	  substract({ name: name, addrMode: "zeroPageX" });
-	}
-	// TODO: why if5 did this?? {exports.flags.setFromByte(exports.flags.getByteClearedOn("carry") | (value & 1));}
-	function ie1(name) {
-	  substract({ name: name, addrMode: "(zeroPage, X)" });
-	}
-	function if1(name) {
-	  substract({ name: name, addrMode: "(zeroPage), Y" });
+	  const addr = getAddressingModeAddr({ addrMode: "absoluteY" });
+	  const value = exports.memory.readByte(addr).value;
+	  exports.reg.A = logicInstruction({
+	    type: "AND",
+	    valueA: value,
+	    valueAName: "memory",
+	    valueB: exports.memory.regSP,
+	    valueBName: "regSP",
+	    name: name,
+	  });
+	  exports.reg.X = exports.reg.A;
+	  exports.memory.regSP = exports.reg.A;
 	}
 
-	function substract({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
-	  let addr = getAddressingModeAddr({
+	//Logic Or Memory with Accumulator
+	function i09(name) {
+	  or({ name: name, addrMode: "immediate" });
+	}
+	function i0d(name) {
+	  or({ name: name, addrMode: "absolute" });
+	}
+	function i1d(name) {
+	  or({ name: name, addrMode: "absoluteX" });
+	}
+	function i19(name) {
+	  or({ name: name, addrMode: "absoluteY" });
+	}
+	function i05(name) {
+	  or({ name: name, addrMode: "zeroPage" });
+	}
+	function i15(name) {
+	  or({ name: name, addrMode: "zeroPageX" });
+	}
+	function i01(name) {
+	  or({ name: name, addrMode: "(zeroPage, X)" });
+	}
+	function i11(name) {
+	  or({ name: name, addrMode: "(zeroPage), Y" });
+	}
+
+	function or({ name = "", addrMode = "" } = {}) {
+	  logicInstructionOnRegAWithMemoryResultToRegA({
+	    type: "ORA",
+	    name: name,
 	    addrMode: addrMode,
-	    onlyLowerByte: onlyLowerByte,
 	  });
-	  let value = exports.memory.readByte(addr).value;
-
-	  consoleDebug({
-	    msg:
-	      name +
-	      ": substracting " +
-	      fmtToHex(value) +
-	      " from regA=" +
-	      fmtToHexBr(exports.reg.A),
-	  });
-	  exports.reg.A = testSubstract(value);
-	  exports.flags.toggleZeroAndNegative(exports.reg.A);
-
-	  return;
-
-	  function testSubstract(value) {
-	    if ((exports.reg.A ^ value) & 0x80) {
-	      vflag = 1;
-	    } else {
-	      vflag = 0;
-	    }
-
-	    let tmp;
-	    let w;
-	    if (exports.flags.decimal.isSet()) {
-	      tmp =
-	        0xf + (exports.reg.A & 0xf) - (value & 0xf) + exports.flags.carry.value;
-	      if (tmp < 0x10) {
-	        w = 0;
-	        tmp -= 6;
-	      } else {
-	        w = 0x10;
-	        tmp -= 0x10;
-	      }
-	      w += 0xf0 + (exports.reg.A & 0xf0) - (value & 0xf0);
-	      if (w < 0x100) {
-	        exports.flags.carry.clear();
-	        if (exports.flags.getByteClearedOn("overflow") && w < 0x80) {
-	          exports.flags.overflow.clear();
-	        }
-	        w -= 0x60;
-	      } else {
-	        exports.flags.carry._set();
-	        if (exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
-	          exports.flags.overflow.clear();
-	        }
-	      }
-	      w += tmp;
-	    } else {
-	      w = 0xff + exports.reg.A - value + exports.flags.carry.value;
-	      if (w < 0x100) {
-	        exports.flags.carry.clear();
-	        if (exports.flags.getByteClearedOn("overflow") && w < 0x80) {
-	          exports.flags.overflow.clear();
-	        }
-	      } else {
-	        exports.flags.carr._set();
-	        if (exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
-	          exports.flags.overflow.clear();
-	        }
-	      }
-	    }
-	    return getLowerByte(w);
-	  }
-	}
-	// LOAD and S==================================================================================
-	// load accumulator with memory LDA
-	function ia9(name) {
-	  load({ name: name, addrMode: "immediate" });
-	}
-	function iad(name) {
-	  load({ name: name, addrMode: "absolute" });
-	}
-	function ibd(name) {
-	  load({ name: name, addrMode: "absoluteX" });
-	}
-	function ib9(name) {
-	  load({ name: name, addrMode: "absoluteY" });
-	}
-	function ia5(name) {
-	  load({ name: name, addrMode: "zeroPage" });
-	}
-	function ib5(name) {
-	  load({ name: name, addrMode: "zeroPageX", onlyLowerByte: true });
-	}
-	// TODO: why do we bytecut here?
-	function ia1(name) {
-	  load({ name: name, addrMode: "(zeroPage, X)" });
-	}
-	function ib1(name) {
-	  load({ name: name, addrMode: "(zeroPage), Y" });
 	}
 
-	// load index X with memory
-	function ia2(name) {
-	  load({ name: name, register: "X", addrMode: "immediate" });
+	// Logic Exclusive-Or memory with accumulator
+	function i49(name) {
+	  xor({ name: name, addrMode: "immediate" });
 	}
-	function iae(name) {
-	  load({ name: name, register: "X", addrMode: "absolute" });
+	function i4d(name) {
+	  xor({ name: name, addrMode: "absolute" });
 	}
-	function ibe(name) {
-	  load({ name: name, register: "X", addrMode: "absoluteY" });
+	function i5d(name) {
+	  xor({ name: name, addrMode: "absoluteX" });
 	}
-	function ia6(name) {
-	  load({ name: name, register: "X", addrMode: "zeroPage" });
+	function i59(name) {
+	  xor({ name: name, addrMode: "absoluteY" });
 	}
-	function ib6(name) {
-	  load({ name: name, register: "X", addrMode: "zeroPageY" });
+	function i45(name) {
+	  xor({ name: name, addrMode: "zeroPage" });
 	}
-
-	// load index Y with memory
-	function ia0(name) {
-	  load({ name: name, register: "Y", addrMode: "immediate" });
+	function i55(name) {
+	  xor({ name: name, addrMode: "zeroPageX" });
 	}
-	function iac(name) {
-	  load({ name: name, register: "Y", addrMode: "absolute" });
+	function i41(name) {
+	  xor({ name: name, addrMode: "(zeroPage, X)" });
 	}
-	function ibc(name) {
-	  load({ name: name, register: "Y", addrMode: "absoluteX" });
-	}
-	function ia4(name) {
-	  load({ name: name, register: "Y", addrMode: "zeroPage" });
-	}
-	function ib4(name) {
-	  load({ name: name, register: "Y", addrMode: "zeroPageX" });
+	function i51(name) {
+	  xor({ name: name, addrMode: "(zeroPage), Y" });
 	}
 
-	function load({
-	  name = "",
-	  register = "A",
-	  addrMode = "",
-	  onlyLowerByte = false,
-	} = {}) {
-	  let addr = getAddressingModeAddr({
+	function xor({ name = "", addrMode = "" } = {}) {
+	  logicInstructionOnRegAWithMemoryResultToRegA({
+	    type: "EOR",
+	    name: name,
 	    addrMode: addrMode,
-	    onlyLowerByte: onlyLowerByte,
 	  });
-	  let value = exports.memory.readByte(addr).value;
-	  let lineNumber = fmtToHex(addr);
-
-	  if (addr in exports.addressLineNumbers) {
-	    lineNumber +=
-	      "[lineNo: " + exports.addressLineNumbers[addr].lineNumber + "]";
-	  }
-
-	  consoleDebug({
-	    msg:
-	      name +
-	      ": loading value from addr " +
-	      lineNumber +
-	      "=" +
-	      fmtToHex(value) +
-	      " to reg" +
-	      register,
-	  });
-	  exports.reg[register] = value;
-	  exports.flags.toggleZeroAndNegative(value);
-	  return;
 	}
+
+	function iea(name) {
+	  // implied
+	  consoleDebug({ msg: name + ": NOOP" });
+	}
+
+	function _1a(name) {
+	  _fa(name);
+	  consoleDebug({ msg: name + ": NOOP" });
+	} // NOP implied
+	function _3a(name) {
+	  _fa(name);
+	} // NOP implied
+	function _5a(name) {
+	  _fa(name);
+	} // NOP implied
+	function _7a(name) {
+	  _fa(name);
+	} // NOP implied
+	function _da(name) {
+	  _fa(name);
+	} // NOP implied
+	function _fa(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  consoleDebug({ msg: name + ": NOOP implied" });
+	} // NOP implied
+
+	// DOP -------------------
+	// DOP immediate
+	function _80(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _e2(name);
+	}
+	function _82(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _e2(name);
+	}
+	function _89(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _e2(name);
+	}
+	function _c2(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _e2(name);
+	}
+	function _e2(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  consoleDebug({ msg: name + ": Double NOOP" });
+	}
+
+	// DOP zeroPage
+	function _04(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _64(name);
+	}
+	function _44(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _64(name);
+	}
+	function _64(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  consoleDebug({ msg: name + ": Double NOOP" });
+	}
+
+	// DOP zeroPageX
+	function _14(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f4(name);
+	}
+	function _34(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f4(name);
+	}
+	function _54(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f4(name);
+	}
+	function _74(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f4(name);
+	}
+	function _d4(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _f4(name);
+	}
+	function _f4(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  consoleDebug({ msg: name + ": Double NOOP" });
+	}
+
+	// TOP -------------------------
+	// TOP absolute
+	function _0c(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  consoleDebug({ msg: name + ": Triple NOOP" });
+	}
+	// TOP absoluteX
+	function _1c(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _fc(name);
+	}
+	function _3c(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _fc(name);
+	}
+	function _5c(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _fc(name);
+	}
+	function _7c(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _fc(name);
+	}
+	function _dc(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  _fc(name);
+	}
+	function _fc(name) {
+	  if (!exports.allowIllegalOpcode) {
+	    ierr(name);
+	  }
+	  consoleDebug({ msg: name + ": Triple NOOP" });
+	}
+
+	function i08(name) {
+	  pushInstruction(name, "P");
+	}
+	function i28(name) {
+	  pullInstruction(name, "P");
+	}
+	function i48(name) {
+	  pushInstruction(name, "A");
+	}
+	function i68(name) {
+	  pullInstruction(name, "A");
+	}
+
+	function pushInstruction(name, register) {
+	  let byte = exports.reg.A;
+	  let valueName = "regA/accumulator=" + fmtToHexBr(exports.reg.A);
+	  if (register !== "A") {
+	    byte = exports.flags.byte;
+	    valueName = "regP/processor status=" + fmtToHexBr(byte);
+	  }
+	  consoleDebug({ msg: name + ": pushing " + valueName + " to Stack" });
+	  exports.memory.pushByteToStack(new ByteEntry(byte));
+	}
+	function pullInstruction(name, register = "A") {
+	  let valueName;
+	  let byte = exports.memory.popByteFromStack().value;
+	  if (register === "A") {
+	    exports.reg.A = byte;
+	    valueName = "regA/accumulator=" + fmtToHexBr(exports.reg.A);
+	    exports.flags.toggleZeroAndNegative(exports.reg.A);
+	  } else {
+	    exports.flags.setFromByte(byte);
+	    valueName = "regP/processor status=" + fmtToHexBr(exports.flags.byte);
+	  }
+	  consoleDebug({ msg: name + ": pulling " + valueName + " from Stack" });
+	}
+
 	// store accumulator in memory
 	function i8d(name) {
 	  return store({ name: name, addrMode: "absolute" });
@@ -35908,7 +35141,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	      let lastLineTextInstruction = lastLineText.replace(/(\w+)\s*.*/, "$1");
 	      let lastLineTextRemainder = lastLineText.replace(/\w+\s*(\w*)/, "$1");
-	      let lastLineToChange = lastLineTextInstruction;
 
 	      if (exports.addressLineNumbers[addr].isInstruction) {
 	        exports.editor.dispatch({
@@ -35960,65 +35192,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 
-	function getAddressingModeAddr({
-	  addrMode = "",
-	  onlyLowerByte = false,
-	} = {}) {
-	  let zp;
-	  let addr;
-	  if (addrMode == "immediate") {
-	    addr = exports.reg.PC;
-	    exports.reg.PC++; //advance program counter;
-	    return addr;
-	  }
-
-	  switch (addrMode) {
-	    case "absolute":
-	    case "absoluteX":
-	    case "absoluteY":
-	      addr = exports.memory.readWord(exports.reg.PC).value;
-	      exports.reg.PC += 2; //advance program counter by 2 = #byte in word
-	      break;
-	    case "zeroPage":
-	    case "zeroPageX":
-	    case "zeroPageY":
-	    case "(zeroPage, X)":
-	    case "(zeroPage), Y":
-	      zp = addr = exports.memory.readByte(exports.reg.PC).value;
-	      exports.reg.PC++; // advance program counter
-	    default:
-	  }
-	  switch (addrMode) {
-	    case "(zeroPage, X)":
-	      zp = getLowerByte(addr + exports.reg.X);
-	    case "(zeroPage), Y": // and "(zeroPage, X), due to missing break!!"
-	      let lowerByte = exports.memory.readByte(zp).value;
-	      let upperByte = exports.memory.readByte(zp + 1).value;
-	      addr = (upperByte << 8) + lowerByte;
-	      break;
-	    default:
-	  }
-
-	  addr += getRegisterAddr(addrMode.slice(-1));
-
-	  if (onlyLowerByte) {
-	    addr = getLowerByte(addr);
-	  }
-	  return addr;
-
-	  function getRegisterAddr(register) {
-	    switch (register) {
-	      case "X":
-	        return exports.reg.X;
-	      case "Y": // for "(zeroPage), Y" as well
-	        return exports.reg.Y;
-	      default:
-	        return 0x00;
-	    }
-	  }
-	}
-
-	// Test bits in memory with accumulator =======================================================
 	function i2c(name) {
 	  testBits(name, "absolute");
 	}
@@ -36050,7 +35223,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  return;
 	}
 
-	// Transfer [implied addressing mode]==========================================================
 	function iaa(name) {
 	  transfer(name, "A", "X");
 	}
@@ -36087,79 +35259,29 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  });
 	}
 
-	// Stack [addressing Mode: implied]============================================================
-	function i08(name) {
-	  pushInstruction(name, "P");
-	}
-	function i28(name) {
-	  pullInstruction(name, "P");
-	}
-	function i48(name) {
-	  pushInstruction(name, "A");
-	}
-	function i68(name) {
-	  pullInstruction(name, "A");
-	}
-
-	function pushInstruction(name, register) {
-	  let byte = exports.reg.A;
-	  let valueName = "regA/accumulator=" + fmtToHexBr(exports.reg.A);
-	  if (register !== "A") {
-	    byte = exports.flags.byte;
-	    valueName = "regP/processor status=" + fmtToHexBr(byte);
-	  }
-	  consoleDebug({ msg: name + ": pushing " + valueName + " to Stack" });
-	  exports.memory.pushByteToStack(new ByteEntry(byte));
-	}
-	function pullInstruction(name, register = "A") {
-	  let valueName;
-	  let byte = exports.memory.popByteFromStack().value;
-	  if (register === "A") {
-	    exports.reg.A = byte;
-	    valueName = "regA/accumulator=" + fmtToHexBr(exports.reg.A);
-	    exports.flags.toggleZeroAndNegative(exports.reg.A);
-	  } else {
-	    exports.flags.setFromByte(byte);
-	    valueName = "regP/processor status=" + fmtToHexBr(exports.flags.byte);
-	  }
-	  consoleDebug({ msg: name + ": pulling " + valueName + " from Stack" });
-	}
-	// Set and Clear [implied addressing mode]=====================================================
-	// TODO: i58 and i78 are not implemented?
-	function i58(name) {
-	  exports.flags.clear();
-	  console.warn(name + ": clearing interrupt disable status");
-	}
-	function i78(name) {
-	  exports.flags._set();
-	  console.warn(name + ": setting interrupt disable status");
-	}
-	function i18(name) {
-	  clearFlag(name, "carry");
-	}
-	function i38(name) {
-	  setFlag(name, "carry");
-	}
-	function id8(name) {
-	  clearFlag(name, "decimal");
-	}
-	function if8(name) {
-	  setFlag(name, "decimal");
-	}
-	function ib8(name) {
-	  clearFlag(name, "overflow");
-	}
-	// clearValue + SetValue = 0xff = 255
-	function clearFlag(name, flagName) {
-	  consoleDebug({ msg: name + ": clearing " + flagName + " flag" });
-	  exports.flags[flagName].clear();
-	}
-	function setFlag(name, flagName) {
-	  consoleDebug({ msg: name + ": setting " + flagName + " flag" });
-	  exports.flags[flagName]._set();
-	}
+	// prettier-ignore
+	var instructions = new Array( //instruction starting with _ is illegal
+	  i00, i01, _02, _03, _04, i05, i06, _07, i08, i09, i0a, _0b, _0c, i0d, i0e, _0f,
+	  i10, i11, _12, _13, _14, i15, i16, _17, i18, i19, _1a, _1b, _1c, i1d, i1e, _1f,
+	  i20, i21, _22, _23, i24, i25, i26, _27, i28, i29, i2a, _2b, i2c, i2d, i2e, _2f,
+	  i30, i31, _32, _33, _34, i35, i36, _37, i38, i39, _3a, _3b, _3c, i3d, i3e, _3f,
+	  i40, i41, _42, _43, _44, i45, i46, _47, i48, i49, i4a, _4b, i4c, i4d, i4e, _4f,
+	  i50, i51, _52, _53, _54, i55, i56, _57, i58, i59, _5a, _5b, _5c, i5d, i5e, _5f,
+	  i60, i61, _62, _63, _64, i65, i66, _67, i68, i69, i6a, _6b, i6c, i6d, i6e, _6f,
+	  i70, i71, _72, _73, _74, i75, i76, _77, i78, i79, _7a, _7b, _7c, i7d, i7e, _7f,
+	  _80, i81, _82, _83, i84, i85, i86, _87, i88, _89, i8a, _8b, i8c, i8d, i8e, _8f,
+	  i90, i91, _92, _93, i94, i95, i96, _97, i98, i99, i9a, _9b, _9c, i9d, _9e, _9f,
+	  ia0, ia1, ia2, _a3, ia4, ia5, ia6, _a7, ia8, ia9, iaa, _ab, iac, iad, iae, _af,
+	  ib0, ib1, _b2, _b3, ib4, ib5, ib6, _b7, ib8, ib9, iba, _bb, ibc, ibd, ibe, _bf,
+	  ic0, ic1, _c2, _c3, ic4, ic5, ic6, _c7, ic8, ic9, ica, _cb, icc, icd, ice, _cf,
+	  id0, id1, _d2, _d3, _d4, id5, id6, _d7, id8, id9, _da, _db, _dc, idd, ide, _df,
+	  ie0, ie1, _e2, _e3, ie4, ie5, ie6, _e7, ie8, ie9, iea, _eb, iec, ied, iee, _ef,
+	  if0, if1, _f2, _f3, _f4, if5, if6, _f7, if8, if9, _fa, _fb, _fc, ife, ifd, _ff,
+	  i4cRelativePlus, i4cRelativeMinus,
+	);
 
 	// Miscellaneous ==============================================================================
+	// Break
 	function i00(name) {
 	  // implied
 	  exports.codeRunning = false;
@@ -36167,566 +35289,249 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  exports.flags.interruptDisable._set();
 	  consoleDebug({ msg: name + "BRK : Forcing interrupt" });
 	}
-
-	function iea(name) {
-	  // implied
-	  consoleDebug({ msg: name + ": NOOP" });
-	}
 	// undefined opcodes ==========================================================================
 
-	function i1a(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // NOP implied
-	function i3a(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // NOP implied
-	function i5a(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // NOP implied
-	function i7a(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // NOP implied
-	function ida(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // NOP implied
-	function ifa(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // NOP implied
-
-	function i04(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP zp
-	function i14(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP zp,X
-	function i34(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP zp,X
-	function i44(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP zp
-	function i54(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP zp,X
-	function i64(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP zp
-	function i74(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP zp,X
-	function i80(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP imm
-	function i82(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP imm
-	function i89(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP imm
-	function ic2(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP imm
-	function id4(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP zp,X
-	function ie2(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP imm
-	function if4(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // DOP zp,X
-
-	function i0c(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // TOP abs
-	function i1c(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // TOP abs,X
-	function i3c(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // TOP abs,X
-	function i5c(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // TOP abs,X
-	function i7c(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // TOP abs,X
-	function idc(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // TOP abs,X
-	function ifc(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // TOP abs,X
-
-	function i02(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function i12(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function i22(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function i32(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function i42(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function i52(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function i62(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function i72(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function i92(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function ib2(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function id2(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-	function if2(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // KIL implied
-
 	// --------------------------------------------------------------------------------------------
-	function i0b(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // AAC immediate
-	function i2b(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // AAC immediate
 
-	function i87(name) {
+	function _c7(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // AAX zp
-	function i97(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // AAX zp, Y
-	function i83(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // AAX (indirect, Y)
-	function i8f(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // AAX abs
-
-	function i6b(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // ARR immediate
-
-	function i4b(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // ASR immediate
-
-	function iab(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // ATX immediate
-
-	function i9f(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // AXA abs, y
-	function i93(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // AXA (ind), Y
-
-	function icb(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // AXS
-
-	function ic7(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // DCP zp
-	function id7(name) {
+	function _d7(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // DCP zp, X
-	function icf(name) {
+	function _cf(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // DCP abs
-	function idf(name) {
+	function _df(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // DCP abs, X
-	function idb(name) {
+	function _db(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // DCP abs, Y
-	function ic3(name) {
+	function _c3(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // DCP (ind, X)
-	function id3(name) {
+	function _d3(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // DCP (ind), Y
 
-	function ie7(name) {
+	function _e7(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // ISC zp
-	function if7(name) {
+	function _f7(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // ISC zp, X
-	function ief(name) {
+	function _ef(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // ISC abs
-	function iff(name) {
+	function _ff(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // ISC abs,X
-	function ifb(name) {
+	function _fb(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // ISC abs,Y
-	function ie3(name) {
+	function _e3(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // ISC (ind,X)
-	function if3(name) {
+	function _f3(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // ISC (ind), Y
 
-	function ibb(name) {
+	function _27(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // LAR abs,y
-
-	function ia7(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // LAX zp
-	function ib7(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // LAX zp,Y
-	function iaf(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // LAX abs
-	function ibf(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // LAX abs,Y
-	function ia3(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // LAX (ind, X)
-	function ib3(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
-	} // LAX (ind), Y
-
-	function i27(name) {
-	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RLA zp
-	function i37(name) {
+	function _37(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RLA zp,X
-	function i2f(name) {
+	function _2f(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RLA abs
-	function i3f(name) {
+	function _3f(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RLA abs,X
-	function i3b(name) {
+	function _3b(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RLA abs,Y
-	function i23(name) {
+	function _23(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RLA (ind,X)
-	function i33(name) {
+	function _33(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RLA (ind), Y
 
-	function i67(name) {
+	function _67(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RRA zp
-	function i77(name) {
+	function _77(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RRA zp,X
-	function i6f(name) {
+	function _6f(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RRA abs
-	function i7f(name) {
+	function _7f(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RRA abs,X
-	function i7b(name) {
+	function _7b(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RRA abs,Y
-	function i63(name) {
+	function _63(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RRA (ind, X)
-	function i73(name) {
+	function _73(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // RRA (ind), Y
 
-	function ieb(name) {
-	  ie9(name);
-	} // same as ie9, SUB immediate
-
-	function i07(name) {
+	function _07(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SLO zp
-	function i17(name) {
+	function _17(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SLO zp,X
-	function i0f(name) {
+	function _0f(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SLO abs
-	function i1f(name) {
+	function _1f(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SLO abs,X
-	function i1b(name) {
+	function _1b(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SLO abs,Y
-	function i03(name) {
+	function _03(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SLO (ind, X)
-	function i13(name) {
+	function _13(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SLO (ind), Y
 
-	function i47(name) {
+	function _47(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SRE zp
-	function i57(name) {
+	function _57(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SRE zp,X
-	function i4f(name) {
+	function _4f(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SRE abs
-	function i5f(name) {
+	function _5f(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SRE abs,X
-	function i5b(name) {
+	function _5b(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SRE abs,Y
-	function i43(name) {
+	function _43(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SRE (ind, X)
-	function i53(name) {
+	function _53(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SRE (ind), Y
 
-	function i9e(name) {
+	function _9e(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SXA abs, Y
 
-	function i9c(name) {
+	function _9c(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // SYA abs, X
 
-	function i8b(name) {
+	function _8b(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // XAA exact operation unknown
 
-	function i9b(name) {
+	function _9b(name) {
 	  if (!exports.allowIllegalOpcode) {
-			ierr(name);
-		}
+	    ierr(name);
+	  }
 	} // XAS abs,Y
-
-	function ierr(name) {
-	  let message = name + " illegal Opcode not allowed, skipping";
-	  raiseRunTimeError(fmtToHexWord(exports.reg.PC - 1), message);
-	  console.warn(message);
-	}
 
 	/*
 	 *  keyPress() - Store keycode in ZP $ff
@@ -36799,13 +35604,13 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  $("#code").value = "Loading, please wait ...";
 	  $("#compileButton").prop("disabled", true);
 	  $.ajax({
-	    url : "./assets/js/examples/" + file,
-	    success : function (data, textStatus, _) {
+	    url: "./assets/js/examples/" + file,
+	    success: function (data, textStatus, _) {
 	      if (textStatus == 200) {
 	        $("#code").val(data);
 	        $("#compileButton").prop("disabled", false);
 	      }
-	    }
+	    },
 	  });
 	  exports.debuggeR.disable();
 	}
@@ -36834,6 +35639,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  $("#fileSelect").prop("disabled", false);
 	  $("#stepButton").prop("disabled", true);
 	  $("#gotoButton").prop("disabled", true);
+	  $("#hexDumpButton").prop("disabled", true);
+	  $("#plainHexDumpButton").prop("disabled", true);
 	}
 
 	function compileCode() {
@@ -36882,6 +35689,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    $("#compileButton").prop("disabled", true);
 	    $("#fileSelect").prop("disabled", false);
 	    $("#hexDumpButton").prop("disabled", false);
+	    $("#plainHexDumpButton").prop("disabled", false);
 	    return;
 	  }
 	}
@@ -36890,32 +35698,38 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 *  hexDump() - Dump binary as hex to new window
 	 */
 
-	function hexDump() {
+	function hexDump({ plain = false } = {}) {
 	  let w = window.open(
 	    "",
-	    "hexDump",
+	    plain ? "plainHexDump" : "hexDump",
 	    "width=600,height=300,resizable=yes,scrollbars=yes,toolbar=no,location=no,menubar=no,status=no"
 	  );
 
 	  let html = "<html><head>";
 	  html += "<meta charset='utf-8'";
-	  html += "<link href='assets/css/style.css' rel='stylesheet' type='text/css' />";
-	  html += "<link href='assets/css/bootstrap.min.css' rel='stylesheet' type='text/css' />";
+	  html +=
+	    "<link href='assets/css/style.css' rel='stylesheet' type='text/css' />";
+	  html +=
+	    "<link href='assets/css/bootstrap.min.css' rel='stylesheet' type='text/css' />";
 	  html += "<title>hexDump</title></head><body>";
 	  html += "<div class='container'>";
 	  html += "<div class='row d-flex justify-content-center'>";
 	  html += "<div class='col vh-100 overflow-auto'>";
-	  html += "<h3>HexDump</h3>";
+	  html += "<h3>";
+	  html += plain === true ? "PlainHexDump" : "HexDump";
+	  html += "</h3>";
 	  html += "<div class='dumpHTML'>";
 
-	  html += exports.memory.dumpHTML();
-	  
+	  html +=
+	    plain === true ? exports.memory.dumpPlainHTML() : exports.memory.dumpHTML();
+
 	  html += "-- [END]";
 	  html += "</div>";
 	  html += "</div>";
 	  html += "</div>";
 	  html += "</div>";
-	  html += "<script type='text/javascript' src='assets/js/bootstrap.bundle.min.js'></script>";
+	  html +=
+	    "<script type='text/javascript' src='assets/js/bootstrap.bundle.min.js'></script>";
 	  html += "</body></html>";
 	  w.document.write(html);
 	  w.document.close();
@@ -36930,6 +35744,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    exports.codeRunning = false;
 	    $("#runButton").html("Run");
 	    $("#hexDumpButton").prop("disabled", false);
+	    $("#plainHexDumpButton").prop("disabled", false);
 	    $("#fileSelect").prop("disabled", false);
 	    if (!exports.debug) {
 	      exports.debuggeR.disable();
@@ -36938,6 +35753,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  } else {
 	    $("#runButton").html("Stop");
 	    $("#hexDumpButton").prop("disabled", true);
+	    $("#plainHexDumpButton").prop("disabled", true);
 	    $("#fileSelect").prop("disabled", true);
 	    if (!exports.debug) {
 	      $("#stepButton").prop("disabled", !exports.debug);
@@ -36965,6 +35781,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 *  executeInstruction() - Executes one instruction. This is the main part of the CPU emulator.
 	 */
 	function executeInstruction() {
+	  if (exports.processorLocked) {
+	    return;
+	  }
 	  if (!exports.codeRunning) {
 	    return;
 	  }
@@ -37049,6 +35868,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      $("#runButton").html("Run");
 	      $("#fileSelect").prop("disabled", false);
 	      $("#hexDumpButton").prop("disabled", false);
+	      $("#plainHexDumpButton").prop("disabled", false);
 	    }
 	  }
 	}
@@ -37088,7 +35908,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 
-	/*7
+	/*
 	 *
 	 *  6502 assembler and emulator in Javascript
 	 *  (C)2006-2010 Stian Soreng - www.6502asm.com
@@ -37129,12 +35949,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	exports.started = false;
 
 	exports.allowIllegalOpcode;
-
-	exports.editor = new EditorView({
-	  state: EditorState.create({
-	    extensions: [basicSetup, StreamLanguage.define(gas), foldGutter()],
-	  }),
-	});
+	(exports.processorLocked = false),
+	  (exports.editor = new EditorView({
+	    state: EditorState.create({
+	      extensions: [basicSetup, StreamLanguage.define(gas), foldGutter()],
+	    }),
+	  }));
 
 	$(".code-area").append(exports.editor.dom);
 
@@ -37153,8 +35973,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	$("#resetButton").click((_) => {
 	  resetEverything();
 	  resetMessageWindow();
-	 });
+	});
 	$("#hexDumpButton").click(hexDump);
+	$("#plainHexDumpButton").click(() => hexDump({ plain: true }));
 	$("#largeModeButton").click(togglePresentationMode);
 	$("#fileSelect").change((event) => Load({ file: event.target.value }));
 	$("#gotoButton").click(gotoAddr);
@@ -37166,6 +35987,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	$("#largeModeButton").prop("disabled", false);
 
 	$("#hexDumpButton").prop("disabled", true);
+	$("#plainHexDumpButton").prop("disabled", true);
 	$("#resetButton").prop("disabled", false);
 	$("#stepButton").prop("disabled", true);
 	$("#gotoButton").prop("disabled", true);
