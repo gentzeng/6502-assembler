@@ -1,0 +1,10 @@
+# Running the assembler
+
+In order to run the assembler, first download this repo with
+```
+git clone --depth 1 https://github.com/gentzeng/6502-assembler.git 
+```
+or download it as a zip package and unzip it.
+
+After downloading, just open the index.html file in a browser
+of your choice. I recommend firefox and chrome.
