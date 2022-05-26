@@ -69,7 +69,7 @@ export class Param {
   }
   isBranch() {
     if (!this.#isLabel()) {
-      raiseError(this.lineNumber, "Branch opCode must be followed by a value");
+      raiseError(this.lineNumber, "Branch opCode must be followed by a label");
     }
     return true;
   }

@@ -52,7 +52,7 @@ function jumpRelative({
   msg = "",
   addrMode = "immediateRelative",
 } = {}) {
-  const addr = getAddressingModeAddr({ addrMode: addrMode + type });
+  const addr = getAddressingModeAddr({ addrMode: `${addrMode}${type}` });
   const value = exports.memory.readByte(addr).value;
   const jumpAddr =
     type === "Plus"
