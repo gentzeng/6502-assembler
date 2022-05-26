@@ -64,7 +64,14 @@ export var instructions = new Array( //instruction starting with _ is illegal
   id0, id1, _d2, _d3, _d4, id5, id6, _d7, id8, id9, _da, _db, _dc, idd, ide, _df,
   ie0, ie1, _e2, _e3, ie4, ie5, ie6, _e7, ie8, ie9, iea, _eb, iec, ied, iee, _ef,
   if0, if1, _f2, _f3, _f4, if5, if6, _f7, if8, if9, _fa, _fb, _fc, ife, ifd, _ff,
-  i4cRelativePlus, i4cRelativeMinus,
+  i10RelativePlus, i10RelativeMinus,
+  i30RelativePlus, i30RelativeMinus,
+  i50RelativePlus, i50RelativeMinus,
+  i70RelativePlus, i70RelativeMinus,
+  i90RelativePlus, i90RelativeMinus,
+  ib0RelativePlus, ib0RelativeMinus,
+  id0RelativePlus, id0RelativeMinus,
+  if0RelativePlus, if0RelativeMinus,
 );
 
 // Miscellaneous ==============================================================================

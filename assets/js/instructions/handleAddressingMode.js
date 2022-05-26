@@ -6,11 +6,7 @@ export function getAddressingModeAddr({
 } = {}) {
   let zp;
   let addr;
-  if (
-    ["immediate", "immediateRelativePlus", "immediateRelativeMinus"].includes(
-      addrMode
-    )
-  ) {
+  if (["immediate", "relativePlus", "relativeMinus"].includes(addrMode)) {
     addr = exports.reg.PC;
     exports.reg.PC++; //advance program counter;
     return addr;
@@ -24,6 +20,7 @@ export function getAddressingModeAddr({
       addr = exports.memory.readWord(exports.reg.PC).value;
       exports.reg.PC += 2; //advance program counter by 2 = #byte in word
       break;
+    case "relative":
     case "zeroPage":
     case "zeroPageX":
     case "zeroPageY":

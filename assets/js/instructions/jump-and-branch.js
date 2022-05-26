@@ -50,7 +50,7 @@ function jumpRelative({
   name = "",
   type = "Plus",
   msg = "",
-  addrMode = "immediateRelative",
+  addrMode = "relative",
 } = {}) {
   const addr = getAddressingModeAddr({ addrMode: `${addrMode}${type}` });
   const value = exports.memory.readByte(addr).value;
@@ -99,29 +99,89 @@ export function i60(name) {
 export function i10(name) {
   jumpBranch({ type: "BPL", name: name });
 }
+export function i10RelativePlus(name) {
+  jumpBranch({ type: "BPL", name: name, sign: "Plus" });
+}
+export function i10RelativeMinus(name) {
+  jumpBranch({ type: "BPL", name: name, sign: "Minus" });
+}
+
 export function i30(name) {
   jumpBranch({ type: "BMI", name: name });
 }
+export function i30RelativePlus(name) {
+  jumpBranch({ type: "BMI", name: name, sign: "Plus" });
+}
+export function i30RelativeMinus(name) {
+  jumpBranch({ type: "BMI", name: name, sign: "Minus" });
+}
+
 export function i50(name) {
   jumpBranch({ type: "BVC", name: name });
 }
+export function i50RelativePlus(name) {
+  jumpBranch({ type: "BVC", name: name, sign: "Plus" });
+}
+export function i50RelativeMinus(name) {
+  jumpBranch({ type: "BVC", name: name, sign: "Minus" });
+}
+
 export function i70(name) {
   jumpBranch({ type: "BVS", name: name });
 }
+export function i70RelativePlus(name) {
+  jumpBranch({ type: "BVS", name: name, sign: "Plus" });
+}
+export function i70RelativeMinus(name) {
+  jumpBranch({ type: "BVS", name: name, sign: "Minus" });
+}
+
 export function i90(name) {
   jumpBranch({ type: "BCC", name: name });
 }
+export function i90RelativePlus(name) {
+  jumpBranch({ type: "BCC", name: name, sign: "Plus" });
+}
+export function i90RelativeMinus(name) {
+  jumpBranch({ type: "BCC", name: name, sign: "Minus" });
+}
+
 export function ib0(name) {
   jumpBranch({ type: "BCS", name: name });
 }
+export function ib0RelativePlus(name) {
+  jumpBranch({ type: "BCS", name: name, sign: "Plus" });
+}
+export function ib0RelativeMinus(name) {
+  jumpBranch({ type: "BCS", name: name, sign: "Minus" });
+}
+
 export function id0(name) {
   jumpBranch({ type: "BNE", name: name });
 }
+export function id0RelativePlus(name) {
+  jumpBranch({ type: "BNE", name: name, sign: "Plus" });
+}
+export function id0RelativeMinus(name) {
+  jumpBranch({ type: "BNE", name: name, sign: "Minus" });
+}
+
 export function if0(name) {
   jumpBranch({ type: "BEQ", name: name });
 }
+export function if0RelativePlus(name) {
+  jumpBranch({ type: "BEQ", name: name, sign: "Plus" });
+}
+export function if0RelativeMinus(name) {
+  jumpBranch({ type: "BEQ", name: name, sign: "Minus" });
+}
 
-function jumpBranch({ type = "", name = "" } = {}) {
+function jumpBranch({
+  type = "",
+  name = "",
+  addrMode = "relative",
+  sign = "",
+} = {}) {
   let conditions = {
     BCC: exports.flags.carry.isClear(),
     BCS: exports.flags.carry.isSet(),
@@ -133,8 +193,7 @@ function jumpBranch({ type = "", name = "" } = {}) {
     BMI: exports.flags.negative.isSet(),
   };
 
-  let offset = exports.memory.readByte(exports.reg.PC).value;
-  exports.reg.PC++; // advance program counter
+  let offset = getAddressingModeAddr({ addrMode: addrMode });
   if (!conditions[type]) {
     consoleDebug({
       msg:
@@ -160,6 +219,7 @@ function jumpBranch({ type = "", name = "" } = {}) {
   return;
 
   function getBranchAddress(offset) {
+    // Simulating twos complement
     if (offset > 0x7f) {
       //0x7f = 127
       return exports.reg.PC - (0x100 - offset);

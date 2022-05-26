@@ -24,7 +24,7 @@ export class CodeLine {
       if (this.label in this.labelAddresses) {
         let defLineNumber = this.labelAddresses[this.label].lineNumber;
         raiseLabelError(
-          codeLine.number,
+          this.number,
           "Label '" + this.label + "' already defined at line " + defLineNumber
         );
         return;

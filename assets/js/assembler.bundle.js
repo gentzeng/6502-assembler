@@ -31652,9 +31652,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	  printMessage(errMsg);
 	}
-	function raiseError(line, errMsg) {
-	  printErrorMessage({ line: line, errMsg: errMsg });
-	}
 	function raiseSyntaxError(line, errMsg) {
 	  printErrorMessage({ line: line, errMsg: errMsg, errType: "Syntax" });
 	}
@@ -32403,10 +32400,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  static regExps = {
 	    label: /^\w+/,
 	    labelIndirect: /^\(\w+\)/,
+	    relativeHexNo: /^\$([0-9a-f]{1,2})/,
+	    relativeDecNo: /^([0-9]{1,3})/,
+	    relativeDecPlusNo: /^\+([0-9]{1,3})/,
+	    relativeDecMinusNo: /^\-([0-9]{1,3})/,
 	    immediateHexNo: /^#\$([0-9a-f]{1,2})/,
 	    immediateDecNo: /^#([0-9]{1,3})/,
-	    immediateRelativePlusDecNo: /^#\+([0-9]{1,3})/,
-	    immediateRelativeMinusDecNo: /^#\-([0-9]{1,3})/,
 	    highLowLabel: /^#[<>]\w+/,
 	    zeroPageHexNo: /^\$([0-9a-f]{1,2})/,
 	    zeroPageDecNo: /^([0-9]{1,3})/,
@@ -32458,30 +32457,24 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return false;
 	  }
 	  isBranch() {
-	    if (!this.#isLabel()) {
-	      raiseError(this.lineNumber, "Branch opCode must be followed by a value");
+	    if (
+	      !this.#isLabel() &&
+	      !this.#isRelativeHexNumber() &&
+	      !this.#isRelativeDecNumber() &&
+	      !this.#isRelativeDecPlusNumber() &&
+	      !this.#isRelativeDecMinusNumber()
+	    ) {
+	      // raiseError(this.lineNumber, "Branch opCode must be followed by a label");
+	      return false;
 	    }
 	    return true;
 	  }
-
 	  isImmediate() {
 	    if (
 	      !this.#isImmediateHexNumber() &&
 	      !this.#isImmediateDecNumber() &&
 	      !this.#hasHighLowLabel()
 	    ) {
-	      return false;
-	    }
-	    return true;
-	  }
-	  isImmediateRelativePlus() {
-	    if (!this.#isImmediateRelativePlusDecNumber()) {
-	      return false;
-	    }
-	    return true;
-	  }
-	  isImmediateRelativeMinus() {
-	    if (!this.#isImmediateRelativeMinusDecNumber()) {
 	      return false;
 	    }
 	    return true;
@@ -32534,22 +32527,30 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    });
 	  }
 
+	  #isRelativeHexNumber() {
+	    return this.#matchesRegExp({ regExp: Param.regExps.relativeHexNo });
+	  }
+	  #isRelativeDecNumber() {
+	    return this.#matchesRegExp({ regExp: Param.regExps.relativeDecNo });
+	  }
+	  #isRelativeDecPlusNumber() {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.relativeDecPlusNo,
+	    });
+	  }
+	  #isRelativeDecMinusNumber() {
+	    return this.#matchesRegExp({
+	      regExp: Param.regExps.relativeDecMinusNo,
+	    });
+	  }
+
 	  #isImmediateHexNumber() {
 	    return this.#matchesRegExp({ regExp: Param.regExps.immediateHexNo });
 	  }
 	  #isImmediateDecNumber() {
 	    return this.#matchesRegExp({ regExp: Param.regExps.immediateDecNo });
 	  }
-	  #isImmediateRelativePlusDecNumber() {
-	    return this.#matchesRegExp({
-	      regExp: Param.regExps.immediateRelativePlusDecNo,
-	    });
-	  }
-	  #isImmediateRelativeMinusDecNumber() {
-	    return this.#matchesRegExp({
-	      regExp: Param.regExps.immediateRelativeMinusDecNo,
-	    });
-	  }
+
 	  #hasHighLowLabel() {
 	    let bool = this.#matchesRegExp({ regExp: Param.regExps.highLowLabel });
 	    return bool;
@@ -32644,6 +32645,90 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 
 	  // push Functions
+	  pushForBranch() {
+	    if (this.#isRelativeHexNumber()) {
+	      let byte = extractRelativeHexNumber.bind(this)();
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
+	      return 1; // for lineLen/codeLen
+	    }
+	    if (this.#isRelativeDecNumber()) {
+	      let byte = extractRelativeDecNumber.bind(this)();
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
+	      return 1; // for lineLen/codeLen
+	    }
+	    if (this.#isRelativeDecPlusNumber()) {
+	      let byte = extractRelativeDecPlusNumber.bind(this)();
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
+	      return 1; // for lineLen/codeLen
+	    }
+	    if (this.#isRelativeDecMinusNumber()) {
+	      let byte = extractRelativeDecMinusNumber.bind(this)();
+	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
+	      return 1; // for lineLen/codeLen
+	    }
+	    if (this.#isLabel()) {
+	      let label = this.name;
+	      if (!(label in this.labelAddresses)) {
+	        raiseLabelError(this.lineNumber, "Label '" + label + "' not existing");
+	        return;
+	      }
+
+	      let labelAddress = this.labelAddresses[label].word;
+	      if (labelAddress === label) {
+	        //labelAddress will be inserted after compileLines()
+	        this.memory.pushByte(new LabelEntry(label, this.lineNumber));
+	        return 1; // for lineLen/codeLen
+	      }
+
+	      if (labelAddress < this.memory.defaultCodePC - 0x600) {
+	        // Backwards
+	        console.warn("backwards");
+	        let offsetAddressWord =
+	          0xff - (this.memory.defaultCodePC - 0x600 - labelAddress);
+	        this.memory.pushByte(
+	          new WordEntry(offsetAddressWord, this.lineNumber).lowerByteEntry
+	        );
+	        return 1; // for lineLen/codeLen
+	      }
+	      if (labelAddress >= this.memory.defaultCodePC - 0x600) {
+	        let offsetAddressWord =
+	          labelAddress - 1 - (this.memory.defaultCodePC - 0x600);
+	        this.memory.pushByte(
+	          new WordEntry(offsetAddressWord, this.lineNumber).lowerByteEntry
+	        );
+	        return 1; // for lineLen/codeLen
+	      }
+	    }
+	    throw "Call pushForBranch() only if isBranch() or isRelative(|Plus|Minus) is true!";
+
+	    // helper
+	    function extractRelativeHexNumber() {
+	      return this.#extractNumber({ regExp: Param.regExps.relativeHexNo });
+	    }
+	    function extractRelativeDecNumber() {
+	      return this.#extractNumber({
+	        regExp: Param.regExps.relativeDecNo,
+	        base: 10,
+	        max: 255,
+	      });
+	    }
+	    function extractRelativeDecPlusNumber() {
+	      return this.#extractNumber({
+	        regExp: Param.regExps.relativeDecPlusNo,
+	        base: 10,
+	        max: 127, // here, we are using the max number with a sign.
+	        // hence, the max twos complement number, 7F is becoming +127
+	      });
+	    }
+	    function extractRelativeDecMinusNumber() {
+	      return this.#extractNumber({
+	        regExp: Param.regExps.relativeDecMinusNo,
+	        base: 10,
+	        max: 128, // here, we are using the min number with a sign.
+	        // hence, the min twos complement number, FF is becoming -128
+	      });
+	    }
+	  }
 	  pushForImmediate() {
 	    if (this.#isImmediateHexNumber()) {
 	      let byte = extractImmediateHexNumber.bind(this)();
@@ -32682,40 +32767,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      return hilo + this.labelAddresses[label].word;
 	    }
 	  }
-	  pushForImmediateRelativePlus() {
-	    if (this.#isImmediateRelativePlusDecNumber()) {
-	      let byte = extractImmediateRelativePlusDecNumber.bind(this)();
-	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
-	      return 1; // for lineLen/codeLen
-	    }
-	    throw "Call this function only if isImmediateRelativePlus() is true!";
 
-	    // helper
-	    function extractImmediateRelativePlusDecNumber() {
-	      return this.#extractNumber({
-	        regExp: Param.regExps.immediateRelativePlusDecNo,
-	        base: 10,
-	        max: 255,
-	      });
-	    }
-	  }
-	  pushForImmediateRelativeMinus() {
-	    if (this.#isImmediateRelativeMinusDecNumber()) {
-	      let byte = extractImmediateRelativeMinusDecNumber.bind(this)();
-	      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
-	      return 1; // for lineLen/codeLen
-	    }
-	    throw "Call this function only if isImmediateRelativeMinus() is true!";
-
-	    // helper
-	    function extractImmediateRelativeMinusDecNumber() {
-	      return this.#extractNumber({
-	        regExp: Param.regExps.immediateRelativeMinusDecNo,
-	        base: 10,
-	        max: 255,
-	      });
-	    }
-	  }
 	  pushForZeroPage() {
 	    let register = this.register;
 	    if (this.#isZeroPageHexNumber(register)) {
@@ -32873,39 +32925,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      });
 	    }
 	  }
-	  pushForBranch() {
-	    let label = this.name;
-	    if (!(label in this.labelAddresses)) {
-	      raiseLabelError(this.lineNumber, "Label '" + label + "' not existing");
-	      return;
-	    }
 
-	    let labelAddress = this.labelAddresses[label].word;
-	    if (labelAddress === label) {
-	      //labelAddress will be inserted after compileLines()
-	      this.memory.pushByte(new LabelEntry(label, this.lineNumber));
-	      return 1; // for lineLen/codeLen
-	    }
-	    if (labelAddress < this.memory.defaultCodePC - 0x600) {
-	      // Backwards
-	      console.warn("backwards");
-	      let offsetAddressWord =
-	        0xff - (this.memory.defaultCodePC - 0x600 - labelAddress);
-	      this.memory.pushByte(
-	        new WordEntry(offsetAddressWord, this.lineNumber).lowerByteEntry
-	      );
-	      return 1; // for lineLen/codeLen
-	    }
-	    if (labelAddress >= this.memory.defaultCodePC - 0x600) {
-	      let offsetAddressWord =
-	        labelAddress - 1 - (this.memory.defaultCodePC - 0x600);
-	      this.memory.pushByte(
-	        new WordEntry(offsetAddressWord, this.lineNumber).lowerByteEntry
-	      );
-	      return 1; // for lineLen/codeLen
-	    }
-	    throw "Call pushForBranch() only if isBranch() is true!";
-	  }
 	  #extractNumber({
 	    // called with binding wrapper in pushFor methods
 	    register = "",
@@ -32992,12 +33012,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    } else if (param.isImmediate()) {
 	      addrModeName = "immediate";
 	      pushFunction = param.pushForImmediate;
-	    } else if (param.isImmediateRelativePlus("")) {
-	      addrModeName = "immediateRelativePlus";
-	      pushFunction = param.pushForImmediateRelativePlus;
-	    } else if (param.isImmediateRelativeMinus("")) {
-	      addrModeName = "immediateRelativeMinus";
-	      pushFunction = param.pushForImmediateRelativeMinus;
 	    } else if (param.isZeroPage("")) {
 	      addrModeName = "zeroPage";
 	      pushFunction = param.pushForZeroPage;
@@ -33069,7 +33083,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      if (this.label in this.labelAddresses) {
 	        let defLineNumber = this.labelAddresses[this.label].lineNumber;
 	        raiseLabelError(
-	          codeLine.number,
+	          this.number,
 	          "Label '" + this.label + "' already defined at line " + defLineNumber
 	        );
 	        return;
@@ -33300,11 +33314,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	} = {}) {
 	  let zp;
 	  let addr;
-	  if (
-	    ["immediate", "immediateRelativePlus", "immediateRelativeMinus"].includes(
-	      addrMode
-	    )
-	  ) {
+	  if (["immediate", "relativePlus", "relativeMinus"].includes(addrMode)) {
 	    addr = exports.reg.PC;
 	    exports.reg.PC++; //advance program counter;
 	    return addr;
@@ -33318,6 +33328,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      addr = exports.memory.readWord(exports.reg.PC).value;
 	      exports.reg.PC += 2; //advance program counter by 2 = #byte in word
 	      break;
+	    case "relative":
 	    case "zeroPage":
 	    case "zeroPageX":
 	    case "zeroPageY":
@@ -33845,7 +33856,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  name = "",
 	  type = "Plus",
 	  msg = "",
-	  addrMode = "immediateRelative",
+	  addrMode = "relative",
 	} = {}) {
 	  const addr = getAddressingModeAddr({ addrMode: `${addrMode}${type}` });
 	  const value = exports.memory.readByte(addr).value;
@@ -33928,8 +33939,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    BMI: exports.flags.negative.isSet(),
 	  };
 
-	  let offset = exports.memory.readByte(exports.reg.PC).value;
-	  exports.reg.PC++; // advance program counter
+	  let offset = getAddressingModeAddr({ addrMode: "relative" });
 	  if (!conditions[type]) {
 	    consoleDebug({
 	      msg:
@@ -33955,6 +33965,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  return;
 
 	  function getBranchAddress(offset) {
+	    // Simulating twos complement
 	    if (offset > 0x7f) {
 	      //0x7f = 127
 	      return exports.reg.PC - (0x100 - offset);
