@@ -1,6 +1,12 @@
+import { EditorState, EditorView, basicSetup } from "@codemirror/basic-setup";
+import { Compartment } from "@codemirror/state";
+import { lineNumbers } from "@codemirror/gutter";
+import { StreamLanguage } from "@codemirror/stream-parser";
+import { gas } from "@codemirror/legacy-modes/mode/gas";
+import { foldGutter } from "@codemirror/fold";
 import { Compiler } from "./compiler";
 import { Command } from "./compiler-command";
-import { fmtToHex } from "./helper";
+import { fmtToHex, fmtToHexBr } from "./helper";
 import { ByteEntry, OpCodeByteEntry } from "./memory";
 
 import { printMessage, resetMessageWindow } from "./message";
@@ -120,7 +126,8 @@ export function compileCode() {
   resetEverything();
   resetMessageWindow();
 
-  let codeToCompile = exports.editor.state.doc.toString();
+  const codeToCompileDoc = exports.editor.state.doc;
+  const codeToCompile = codeToCompileDoc.toString();
   if (codeToCompile === "") {
     resetEverything();
     printMessage("<b>No code in editor.<\b>");
@@ -154,6 +161,9 @@ export function compileCode() {
 
   exports.display.updateFull();
   printMessage("Code compiled successfully, " + compiler.codeLen + " bytes.");
+
+  setEditorLineNumbers();
+
   return;
 
   // helper
@@ -164,6 +174,38 @@ export function compileCode() {
     $("#hexDumpButton").prop("disabled", false);
     $("#plainHexDumpButton").prop("disabled", false);
     return;
+  }
+}
+
+export function setEditorLineNumbers() {
+  const lineNumbersForEditor = exports.memory.getLineNumbersForEditor();
+  const lineCount = exports.editor.viewState.state.doc.text.length;
+
+  const formatLineNumber = (n, _) => {
+    let n_str = n.toString();
+
+    if (!(n in lineNumbersForEditor)) {
+      return n_str;
+    }
+
+    n_str = addLeadingSpace(n_str, lineCount.toString().length);
+
+    const lineNumber = 0x600 + lineNumbersForEditor[n];
+    return `${fmtToHexBr(lineNumber)}|${n_str}`;
+  };
+
+  exports.editor.dispatch({
+    effects: exports.lineNumberCompartment.reconfigure(
+      lineNumbers({ formatNumber: formatLineNumber })
+    ),
+  });
+
+  // helper
+  function addLeadingSpace(n, size) {
+    while (n.length < size) {
+      n = " " + n;
+    }
+    return n;
   }
 }
 

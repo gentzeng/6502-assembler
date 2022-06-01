@@ -45,8 +45,12 @@ export class Memory extends Array {
 
     if (!(memoryEntry instanceof LabelEntry)) {
       // for label insertion
-      // handling special educative jmp relative command
-      if (![0x100, 0x101].includes(memoryEntry.value)) {
+      // handling special educative branch relative command
+      if (
+        ![0x100, 0x101, 0x102, 0x103, 0x104, 0x105, 0x106, 0x107].includes(
+          memoryEntry.value
+        )
+      ) {
         memoryEntry = memoryEntry.lowerByteEntry; // make sure, this is a byte
       }
     }
@@ -91,7 +95,11 @@ export class Memory extends Array {
     if (!(memoryEntry instanceof LabelEntry)) {
       // for label insertion
       // handling special educative jmp relative command
-      if (![0x100, 0x101].includes(memoryEntry.value)) {
+      if (
+        ![0x100, 0x101, 0x102, 0x103, 0x104, 0x105, 0x106, 0x107].includes(
+          memoryEntry.value
+        )
+      ) {
         memoryEntry = memoryEntry.lowerByteEntry;
       }
     }
@@ -154,6 +162,27 @@ export class Memory extends Array {
       dump += "  " + fmtToHex(address) + " : " + fmtToHex(memoryEntry.value);
     });
     return dump;
+  }
+  getLineNumbersForEditor() {
+    let lineNumbers = {};
+    let lineNumber = 0;
+    // filter does not seam to work! Maybe due to Memory being
+    // an inherited Array
+    this.slice(0x600).forEach((memoryEntry, address) => {
+      if ([-1, "undefined", lineNumber].includes(memoryEntry.lineNumber)) {
+        return;
+      }
+
+      lineNumber = memoryEntry.lineNumber;
+
+      if (address === "undefined") {
+        return;
+      }
+
+      lineNumbers[lineNumber] = address;
+    });
+
+    return lineNumbers;
   }
 }
 Memory.prototype.toString = function () {

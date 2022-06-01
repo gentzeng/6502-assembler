@@ -10,6 +10,8 @@
 
 import "jquery";
 import { EditorState, EditorView, basicSetup } from "@codemirror/basic-setup";
+import { lineNumbers } from "@codemirror/gutter";
+import { Compartment } from "@codemirror/state";
 import { StreamLanguage } from "@codemirror/stream-parser";
 import { gas } from "@codemirror/legacy-modes/mode/gas";
 import { foldGutter } from "@codemirror/fold";
@@ -63,10 +65,19 @@ exports.lastLineNumber = 0;
 exports.started = false;
 
 exports.allowIllegalOpcode;
-(exports.processorLocked = false),
+
+// editor stuff
+(exports.lineNumberCompartment = new Compartment(
+  (exports.processorLocked = false)
+)),
   (exports.editor = new EditorView({
     state: EditorState.create({
-      extensions: [basicSetup, StreamLanguage.define(gas), foldGutter()],
+      extensions: [
+        basicSetup,
+        StreamLanguage.define(gas),
+        foldGutter(),
+        exports.lineNumberCompartment.of(lineNumbers()),
+      ],
     }),
   }));
 

@@ -40,42 +40,6 @@ function jump({ name = "", msg = "", addrMode = "absolute" } = {}) {
   });
 }
 
-export function i4cRelativePlus(name) {
-  jumpRelative({ name: name, type: "Plus" });
-}
-export function i4cRelativeMinus(name) {
-  jumpRelative({ name: name, type: "Minus" });
-}
-function jumpRelative({
-  name = "",
-  type = "Plus",
-  msg = "",
-  addrMode = "relative",
-} = {}) {
-  const addr = getAddressingModeAddr({ addrMode: `${addrMode}${type}` });
-  const value = exports.memory.readByte(addr).value;
-  const jumpAddr =
-    type === "Plus"
-      ? (exports.reg.PC + value) % exports.memory.size
-      : (exports.reg.PC - value) % exports.memory.size;
-
-  exports.reg.PC = jumpAddr; // the actual jump to address
-
-  const addressLineNumber = exports.addressLineNumbers[exports.reg.PC];
-  const lineNo =
-    typeof addressLineNumber == "undefined"
-      ? ""
-      : "[lineNo: " + addressLineNumber.lineNumber + "]";
-  consoleDebug({
-    msg:
-      name +
-      ": jumping to " +
-      exports.labelAddresses.getLabel(exports.reg.PC) +
-      fmtToHexWordBr(exports.reg.PC) +
-      lineNo,
-    bold: true,
-  });
-}
 // returning ---------------------------------------------------------------------------------
 export function i40(name) {
   // this actually should pop flags/processor state from stack and pop PC from stack
@@ -99,18 +63,12 @@ export function i60(name) {
 export function i10(name) {
   jumpBranch({ type: "BPL", name: name });
 }
-export function i10RelativePlus(name) {
-  jumpBranch({ type: "BPL", name: name, sign: "Plus" });
-}
 export function i10RelativeMinus(name) {
   jumpBranch({ type: "BPL", name: name, sign: "Minus" });
 }
 
 export function i30(name) {
   jumpBranch({ type: "BMI", name: name });
-}
-export function i30RelativePlus(name) {
-  jumpBranch({ type: "BMI", name: name, sign: "Plus" });
 }
 export function i30RelativeMinus(name) {
   jumpBranch({ type: "BMI", name: name, sign: "Minus" });
@@ -119,18 +77,12 @@ export function i30RelativeMinus(name) {
 export function i50(name) {
   jumpBranch({ type: "BVC", name: name });
 }
-export function i50RelativePlus(name) {
-  jumpBranch({ type: "BVC", name: name, sign: "Plus" });
-}
 export function i50RelativeMinus(name) {
   jumpBranch({ type: "BVC", name: name, sign: "Minus" });
 }
 
 export function i70(name) {
   jumpBranch({ type: "BVS", name: name });
-}
-export function i70RelativePlus(name) {
-  jumpBranch({ type: "BVS", name: name, sign: "Plus" });
 }
 export function i70RelativeMinus(name) {
   jumpBranch({ type: "BVS", name: name, sign: "Minus" });
@@ -139,18 +91,12 @@ export function i70RelativeMinus(name) {
 export function i90(name) {
   jumpBranch({ type: "BCC", name: name });
 }
-export function i90RelativePlus(name) {
-  jumpBranch({ type: "BCC", name: name, sign: "Plus" });
-}
 export function i90RelativeMinus(name) {
   jumpBranch({ type: "BCC", name: name, sign: "Minus" });
 }
 
 export function ib0(name) {
   jumpBranch({ type: "BCS", name: name });
-}
-export function ib0RelativePlus(name) {
-  jumpBranch({ type: "BCS", name: name, sign: "Plus" });
 }
 export function ib0RelativeMinus(name) {
   jumpBranch({ type: "BCS", name: name, sign: "Minus" });
@@ -159,18 +105,12 @@ export function ib0RelativeMinus(name) {
 export function id0(name) {
   jumpBranch({ type: "BNE", name: name });
 }
-export function id0RelativePlus(name) {
-  jumpBranch({ type: "BNE", name: name, sign: "Plus" });
-}
 export function id0RelativeMinus(name) {
   jumpBranch({ type: "BNE", name: name, sign: "Minus" });
 }
 
 export function if0(name) {
   jumpBranch({ type: "BEQ", name: name });
-}
-export function if0RelativePlus(name) {
-  jumpBranch({ type: "BEQ", name: name, sign: "Plus" });
 }
 export function if0RelativeMinus(name) {
   jumpBranch({ type: "BEQ", name: name, sign: "Minus" });
@@ -194,6 +134,9 @@ function jumpBranch({
   };
 
   let offset = getAddressingModeAddr({ addrMode: addrMode });
+  if (sign === "Minus") {
+    offset = 0x100 - offset; // convert to two's complement
+  }
   if (!conditions[type]) {
     consoleDebug({
       msg:
@@ -219,7 +162,7 @@ function jumpBranch({
   return;
 
   function getBranchAddress(offset) {
-    // Simulating twos complement
+    // Simulating two's complement
     if (offset > 0x7f) {
       //0x7f = 127
       return exports.reg.PC - (0x100 - offset);

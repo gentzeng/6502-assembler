@@ -6,7 +6,7 @@ export function getAddressingModeAddr({
 } = {}) {
   let zp;
   let addr;
-  if (["immediate", "relativePlus", "relativeMinus"].includes(addrMode)) {
+  if (["immediate"].includes(addrMode)) {
     addr = exports.reg.PC;
     exports.reg.PC++; //advance program counter;
     return addr;

@@ -14,8 +14,7 @@ export class Param {
     labelIndirect: /^\(\w+\)/,
     relativeHexNo: /^\$([0-9a-f]{1,2})/,
     relativeDecNo: /^([0-9]{1,3})/,
-    relativeDecPlusNo: /^\+([0-9]{1,3})/,
-    relativeDecMinusNo: /^\-([0-9]{1,3})/,
+    relativeDecMinusNo: /^-([0-9]{1,3})/,
     immediateHexNo: /^#\$([0-9a-f]{1,2})/,
     immediateDecNo: /^#([0-9]{1,3})/,
     highLowLabel: /^#[<>]\w+/,
@@ -72,11 +71,14 @@ export class Param {
     if (
       !this.#isLabel() &&
       !this.#isRelativeHexNumber() &&
-      !this.#isRelativeDecNumber() &&
-      !this.#isRelativeDecPlusNumber() &&
-      !this.#isRelativeDecMinusNumber()
+      !this.#isRelativeDecNumber()
     ) {
-      // raiseError(this.lineNumber, "Branch opCode must be followed by a label");
+      return false;
+    }
+    return true;
+  }
+  isRelativeMinus() {
+    if (!this.#isRelativeDecMinusNumber()) {
       return false;
     }
     return true;
@@ -144,11 +146,6 @@ export class Param {
   }
   #isRelativeDecNumber() {
     return this.#matchesRegExp({ regExp: Param.regExps.relativeDecNo });
-  }
-  #isRelativeDecPlusNumber() {
-    return this.#matchesRegExp({
-      regExp: Param.regExps.relativeDecPlusNo,
-    });
   }
   #isRelativeDecMinusNumber() {
     return this.#matchesRegExp({
@@ -268,11 +265,6 @@ export class Param {
       this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
       return 1; // for lineLen/codeLen
     }
-    if (this.#isRelativeDecPlusNumber()) {
-      let byte = extractRelativeDecPlusNumber.bind(this)();
-      this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
-      return 1; // for lineLen/codeLen
-    }
     if (this.#isRelativeDecMinusNumber()) {
       let byte = extractRelativeDecMinusNumber.bind(this)();
       this.memory.pushByte(new ByteEntry(byte, this.lineNumber));
@@ -311,7 +303,7 @@ export class Param {
         return 1; // for lineLen/codeLen
       }
     }
-    throw "Call pushForBranch() only if isBranch() or isRelative(|Plus|Minus) is true!";
+    throw "Call pushForBranch() only if isBranch() or isRelative(|Minus) is true!";
 
     // helper
     function extractRelativeHexNumber() {
@@ -321,15 +313,8 @@ export class Param {
       return this.#extractNumber({
         regExp: Param.regExps.relativeDecNo,
         base: 10,
-        max: 255,
-      });
-    }
-    function extractRelativeDecPlusNumber() {
-      return this.#extractNumber({
-        regExp: Param.regExps.relativeDecPlusNo,
-        base: 10,
-        max: 127, // here, we are using the max number with a sign.
-        // hence, the max twos complement number, 7F is becoming +127
+        max: 127, // here, we are using the m number with an implicit plus sign.
+        // hence, the max twos complement number is 127
       });
     }
     function extractRelativeDecMinusNumber() {
@@ -622,6 +607,9 @@ export class ParamFactory {
       return param;
     } else if (param.empty()) {
       addrModeName = "noParam";
+    } else if (param.isBranchCommand() && param.isRelativeMinus()) {
+      addrModeName = "relativeMinus";
+      pushFunction = param.pushForBranch;
     } else if (param.isBranchCommand() && param.isBranch()) {
       addrModeName = "branch";
       pushFunction = param.pushForBranch;

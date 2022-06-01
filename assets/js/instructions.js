@@ -13,8 +13,15 @@ import { ierr } from "./instructions/error" // prettier-ignore
 
 import { i58, i78, i18, i38, id8, if8, ib8 } from "./instructions/flags" // prettier-ignore
 
-import { i20, i4c, i6c, i4cRelativePlus, i4cRelativeMinus, i40, i60 } from "./instructions/jump-and-branch" // prettier-ignore
-import { i10, i30, i50, i70, i90, ib0, id0, if0 } from "./instructions/jump-and-branch" // prettier-ignore
+import { i20, i4c, i6c, i40, i60 } from "./instructions/jump-and-branch" // prettier-ignore
+import { i10, i10RelativeMinus } from "./instructions/jump-and-branch" // prettier-ignore
+import { i30, i30RelativeMinus } from "./instructions/jump-and-branch" // prettier-ignore
+import { i50, i50RelativeMinus } from "./instructions/jump-and-branch" // prettier-ignore
+import { i70, i70RelativeMinus } from "./instructions/jump-and-branch" // prettier-ignore
+import { i90, i90RelativeMinus } from "./instructions/jump-and-branch" // prettier-ignore
+import { ib0, ib0RelativeMinus } from "./instructions/jump-and-branch" // prettier-ignore
+import { id0, id0RelativeMinus } from "./instructions/jump-and-branch" // prettier-ignore
+import { if0, if0RelativeMinus } from "./instructions/jump-and-branch" // prettier-ignore
 
 import { _02, _12, _22, _32, _42, _52, _62, _72, _92, _b2, _d2, _f2, } from "./instructions/kill/"; //prettier-ignore
 
@@ -64,14 +71,14 @@ export var instructions = new Array( //instruction starting with _ is illegal
   id0, id1, _d2, _d3, _d4, id5, id6, _d7, id8, id9, _da, _db, _dc, idd, ide, _df,
   ie0, ie1, _e2, _e3, ie4, ie5, ie6, _e7, ie8, ie9, iea, _eb, iec, ied, iee, _ef,
   if0, if1, _f2, _f3, _f4, if5, if6, _f7, if8, if9, _fa, _fb, _fc, ife, ifd, _ff,
-  i10RelativePlus, i10RelativeMinus,
-  i30RelativePlus, i30RelativeMinus,
-  i50RelativePlus, i50RelativeMinus,
-  i70RelativePlus, i70RelativeMinus,
-  i90RelativePlus, i90RelativeMinus,
-  ib0RelativePlus, ib0RelativeMinus,
-  id0RelativePlus, id0RelativeMinus,
-  if0RelativePlus, if0RelativeMinus,
+  i10RelativeMinus,
+  i30RelativeMinus,
+  i50RelativeMinus,
+  i70RelativeMinus,
+  i90RelativeMinus,
+  ib0RelativeMinus,
+  id0RelativeMinus,
+  if0RelativeMinus,
 );
 
 // Miscellaneous ==============================================================================

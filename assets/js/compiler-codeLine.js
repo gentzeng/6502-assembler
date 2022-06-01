@@ -13,8 +13,8 @@ export class CodeLine {
       label: /^(\w+):.*$/,
       commandWithLeadLabel: /^\w+:\s*(\w+)\s*.*$/,
       command: /^(\w\w\w)\s*.*$/,
-      paramWithLeadLabel: /^\w+:\s*\w+\s+(.*?)/,
-      param: /^\w\w\w+\s+[+-]?(.*?)/,
+      paramWithLeadLabel: /^\w+:\s*\w+\s+([-]?.*?)/,
+      param: /^\w\w\w+\s+([-]?.*?)/,
     };
   }
 
