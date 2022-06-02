@@ -20,9 +20,9 @@ export class Param {
     highLowLabel: /^#[<>]\w+/,
     zeroPageHexNo: /^\$([0-9a-f]{1,2})/,
     zeroPageDecNo: /^([0-9]{1,3})/,
-    absoluteHexNo: /^\$([0-9a-f]{3,4})/,
+    absoluteHexNo: /^\$([0-9a-f]{1,4})/, // Todo:, wht not length 1,4?
     absoluteDecNo: /^([0-9]{1,5})/, // Todo: Why not only length of 4,5?
-    absoluteHexNoIndirect: /^\$\(([0-9a-f]{3,4})\)/,
+    absoluteHexNoIndirect: /^\$\(([0-9a-f]{1,4})\)/,
     absoluteDecNoIndirect: /^\(([0-9]{1,5})\)/, // Todo: Why not only length of 4,5?
     indirectHexNo: /^\(\$([0-9a-f]{1,2}).*/,
   };
