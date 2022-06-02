@@ -148,7 +148,8 @@ export class Memory extends Array {
     this.forEach((memoryEntry, address) => {
       dump += "<br/>";
       if (address == 1536) {
-        dump += "<b>Begin of code area</b>";
+        dump +=
+          "<span id='idCodeBegin'><strong>Begin of code area</strong></span>";
         dump += "<br/>";
       }
       dump += "  " + fmtToHex(address) + " : " + memoryEntry.toString();
@@ -234,8 +235,8 @@ export class ByteEntry extends MemoryEntry {
 }
 ByteEntry.prototype.toString = function () {
   return (
-    "      ByteEntry : " +
     fmtToHex(this.value) +
+    ", ByteEntry       " +
     lineNumberToString.bind(this)()
   );
 
@@ -249,7 +250,7 @@ ByteEntry.prototype.toString = function () {
     if (this.lineNumber < 0) {
       return "                   ";
     }
-    return "       at line " + this.lineNumber.toString().padStart(4, " ");
+    return "     at line " + this.lineNumber.toString().padStart(4, " ");
   }
 };
 
@@ -265,9 +266,9 @@ export class OpCodeByteEntry extends MemoryEntry {
 }
 OpCodeByteEntry.prototype.toString = function () {
   return (
-    "OpCodeByteEntry : " +
     fmtToHex(this.value) +
-    " [" +
+    ", OpCodeByteEntry" +
+    "[" +
     Command.getOpCodeName(this.value) +
     "] at line " +
     this.lineNumber.toString().padStart(4, " ")
@@ -297,5 +298,5 @@ export class WordEntry extends MemoryEntry {
   }
 }
 WordEntry.prototype.toString = function () {
-  return "WordEntry       : " + fmtToHex(this.value) + ")";
+  return fmtToHex(this.value) + ")" + ", WordEntry       : ";
 };

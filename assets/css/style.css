@@ -80,9 +80,7 @@ body.presentation-mode .code-area {
 .dumpHTML {
   overflow: scroll;
   white-space: pre;
-  font-family: monospace; 
 }
-
 
 div.screen {
   background-color: #000;

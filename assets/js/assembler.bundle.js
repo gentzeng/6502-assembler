@@ -32177,7 +32177,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.forEach((memoryEntry, address) => {
 	      dump += "<br/>";
 	      if (address == 1536) {
-	        dump += "<b>Begin of code area</b>";
+	        dump +=
+	          "<span id='idCodeBegin'><strong>Begin of code area</strong></span>";
 	        dump += "<br/>";
 	      }
 	      dump += "  " + fmtToHex(address) + " : " + memoryEntry.toString();
@@ -32263,8 +32264,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 	ByteEntry.prototype.toString = function () {
 	  return (
-	    "      ByteEntry : " +
 	    fmtToHex(this.value) +
+	    ", ByteEntry       " +
 	    lineNumberToString.bind(this)()
 	  );
 
@@ -32278,7 +32279,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    if (this.lineNumber < 0) {
 	      return "                   ";
 	    }
-	    return "       at line " + this.lineNumber.toString().padStart(4, " ");
+	    return "     at line " + this.lineNumber.toString().padStart(4, " ");
 	  }
 	};
 
@@ -32294,9 +32295,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	}
 	OpCodeByteEntry.prototype.toString = function () {
 	  return (
-	    "OpCodeByteEntry : " +
 	    fmtToHex(this.value) +
-	    " [" +
+	    ", OpCodeByteEntry" +
+	    "[" +
 	    Command.getOpCodeName(this.value) +
 	    "] at line " +
 	    this.lineNumber.toString().padStart(4, " ")
@@ -32326,7 +32327,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 	WordEntry.prototype.toString = function () {
-	  return "WordEntry       : " + fmtToHex(this.value) + ")";
+	  return fmtToHex(this.value) + ")" + ", WordEntry       : ";
 	};
 
 	class LabelAddresses {
@@ -35800,12 +35801,17 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  html += "<h3>";
 	  html += plain === true ? "PlainHexDump" : "HexDump";
 	  html += "</h3>";
+	  html += "<div>";
+	  html += "<a href='#idCodeBegin'>Goto begin of Codearea (0x600)</a>";
+	  html += "</div>";
 	  html += "<div class='dumpHTML'>";
+	  html += "<pre style='font-family:monospace'>";
 
 	  html +=
 	    plain === true ? exports.memory.dumpPlainHTML() : exports.memory.dumpHTML();
 
 	  html += "-- [END]";
+	  html += "</pre>";
 	  html += "</div>";
 	  html += "</div>";
 	  html += "</div>";

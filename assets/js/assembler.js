@@ -233,12 +233,17 @@ export function hexDump({ plain = false } = {}) {
   html += "<h3>";
   html += plain === true ? "PlainHexDump" : "HexDump";
   html += "</h3>";
+  html += "<div>";
+  html += "<a href='#idCodeBegin'>Goto begin of Codearea (0x600)</a>";
+  html += "</div>";
   html += "<div class='dumpHTML'>";
+  html += "<pre style='font-family:monospace'>";
 
   html +=
     plain === true ? exports.memory.dumpPlainHTML() : exports.memory.dumpHTML();
 
   html += "-- [END]";
+  html += "</pre>";
   html += "</div>";
   html += "</div>";
   html += "</div>";
