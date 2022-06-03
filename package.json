@@ -8,7 +8,9 @@
   },
   "scripts": {
     "test": "jest",
-    "fmt": "npx prettier -w ./assets/js/*",
+    "fmt-js": "npx prettier -w ./assets/js/*",
+    "fmt-html": "npx prettier -w ./index.html",
+    "fmt": "npm run fmt-html; npm run fmt-js",
     "link": "node_modules/.bin/rollup -c",
     "compile": "npm run link"
   },
