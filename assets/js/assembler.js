@@ -11,6 +11,9 @@ import { instructions } from "./instructions";
  *  keyPress() - Store keycode in ZP $ff
  */
 export function keyPress(e) {
+  if (!exports.codeRunning) {
+    return;
+  }
   if (typeof window.event != "undefined") {
     e = window.event;
   }
@@ -93,7 +96,6 @@ export function Load({ file } = {}) {
  *  resetEverything() - Reset CPU, memory and html (partly).
  */
 export function resetEverything() {
-  resetEditorTest();
   exports.compiler = null;
   exports.error = false;
   exports.codeRunning = false;
@@ -117,19 +119,6 @@ export function resetEverything() {
   $("#hexViewerButton").prop("disabled", true);
   $("#hexDumpButton").prop("disabled", true);
   $("#plainHexDumpButton").prop("disabled", true);
-
-  //helper
-  function resetEditorTest() {
-    if (typeof exports.codeToCompile !== "undefined") {
-      exports.editor.dispatch({
-        changes: {
-          from: 0,
-          to: exports.editor.state.doc.length,
-          insert: exports.codeToCompile,
-        },
-      });
-    }
-  }
 }
 
 export function compileCode() {
@@ -221,6 +210,9 @@ export function setEditorLineNumbers() {
   }
 }
 
+/*
+ *  hexDump() - Dump binary as hex to new window in Hex Viewer style
+ */
 export function hexViewer() {
   let w = window.open(
     "",
@@ -326,7 +318,6 @@ export function hexViewer() {
 /*
  *  hexDump() - Dump binary as hex to new window
  */
-
 export function hexDump({ plain = false } = {}) {
   let w = window.open(
     "",
@@ -374,34 +365,61 @@ export function hexDump({ plain = false } = {}) {
  */
 export function runBinary() {
   if (exports.codeRunning) {
-    /* Switch OFF everything */
-    exports.codeRunning = false;
-    $("#runButton").html("Run");
-    $("#hexViewerButton").prop("disabled", false);
-    $("#hexDumpButton").prop("disabled", false);
-    $("#plainHexDumpButton").prop("disabled", false);
-    $("#fileSelect").prop("disabled", false);
-    if (!exports.debug) {
-      exports.debuggeR.disable();
-    }
-    clearInterval(exports.myInterval);
+    stopBinary();
   } else {
-    $("#runButton").html("Stop");
-    $("#hexViewerButton").prop("disabled", true);
-    $("#hexDumpButton").prop("disabled", true);
-    $("#plainHexDumpButton").prop("disabled", true);
-    $("#fileSelect").prop("disabled", true);
-    if (!exports.debug) {
-      $("#stepButton").prop("disabled", !exports.debug);
-      $("#gotoButton").prop("disabled", !exports.debug);
-    } else {
-      $("#stepButton").prop("disabled", false);
-      $("#gotoButton").prop("disabled", false);
+    startBinary();
+  }
+}
+
+/*
+ *  startBinary() - Start the running Binary
+ */
+function startBinary() {
+  $("#runButton").html("Stop");
+  $("#hexViewerButton").prop("disabled", true);
+  $("#hexDumpButton").prop("disabled", true);
+  $("#plainHexDumpButton").prop("disabled", true);
+  $("#fileSelect").prop("disabled", true);
+  if (!exports.debug) {
+    $("#stepButton").prop("disabled", !exports.debug);
+    $("#gotoButton").prop("disabled", !exports.debug);
+  } else {
+    $("#stepButton").prop("disabled", false);
+    $("#gotoButton").prop("disabled", false);
+  }
+  exports.codeRunning = true;
+  exports.myInterval = setInterval((_) => {
+    multiExecute();
+  }, 1);
+}
+
+/*
+ *  runBinary() - Stop the running Binary
+ */
+export function stopBinary() {
+  resetEditor();
+  exports.codeRunning = false;
+  $("#runButton").html("Run");
+  $("#hexViewerButton").prop("disabled", false);
+  $("#hexDumpButton").prop("disabled", false);
+  $("#plainHexDumpButton").prop("disabled", false);
+  $("#fileSelect").prop("disabled", false);
+  if (!exports.debug) {
+    exports.debuggeR.disable();
+  }
+  clearInterval(exports.myInterval);
+
+  //helper
+  function resetEditor() {
+    if (typeof exports.codeToCompile !== "undefined") {
+      exports.editor.dispatch({
+        changes: {
+          from: 0,
+          to: exports.editor.state.doc.length,
+          insert: exports.codeToCompile,
+        },
+      });
     }
-    exports.codeRunning = true;
-    exports.myInterval = setInterval((_) => {
-      multiExecute();
-    }, 1);
   }
 }
 

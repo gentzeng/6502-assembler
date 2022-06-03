@@ -11,6 +11,7 @@ export class CodeLine {
     this.regExp = {
       addressOnly: /^\*[\s]*=[\s]*([\$]?[0-9a-f]*)$/,
       label: /^(\w+):.*$/,
+      labelWithEquAddrOnly: /^\w+:\s+(equ|EQU)\s+(\$[0-9a-f]+).*/,
       commandWithLeadLabel: /^\w+:\s*(\w+)\s*.*$/,
       command: /^(\w\w\w)\s*.*$/,
       paramWithLeadLabel: /^\w+:\s*\w+\s+([-]?.*?)/,
@@ -21,16 +22,18 @@ export class CodeLine {
   scanLabel(labelAddresses) {
     this.labelAddresses = labelAddresses;
     if (this.#isLabel()) {
-      if (this.label in this.labelAddresses) {
-        let defLineNumber = this.labelAddresses[this.label].lineNumber;
+      const label = this.label;
+      if (label in this.labelAddresses) {
+        let defLineNumber = this.labelAddresses[label].lineNumber;
         raiseLabelError(
           this.number,
-          "Label '" + this.label + "' already defined at line " + defLineNumber
+          "Label '" + label + "' already defined at line " + defLineNumber
         );
         return;
       }
       // Use label as Address provisionaly => will be read correctly later!
-      labelAddresses[this.label] = new LabelAddress(this.label, this.number);
+      labelAddresses[label] = new LabelAddress(label, this.number);
+      console.log(label, labelAddresses[label]);
     }
     return;
   }
@@ -81,6 +84,9 @@ export class CodeLine {
   }
   get label() {
     return this.#extract(this.regExp.label);
+  }
+  get addressFromLabelWithEquAddrOnly() {
+    return this.#extract(this.regExp.labelWithEquAddrOnly);
   }
   get commandName() {
     let lineContent = this.content;
@@ -134,6 +140,12 @@ export class CodeLine {
   }
   #isLabel() {
     if (this.content.match(this.regExp.label)) {
+      return true;
+    }
+    return false;
+  }
+  #isLabelWithEquAddrOnly() {
+    if (this.content.match(this.regExp.labelWithEquAddrOnly)) {
       return true;
     }
     return false;

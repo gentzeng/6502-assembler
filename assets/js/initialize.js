@@ -24,6 +24,7 @@ import { Flags } from "./flags";
 import {
   compileCode,
   runBinary,
+  stopBinary,
   resetEverything,
   hexViewer,
   hexDump,
@@ -88,7 +89,7 @@ exports.allowIllegalOpcode;
 
 $(".code-area").append(exports.editor.dom);
 exports.editor.contentDOM.onfocus = () => {
-  resetEverything();
+  stopBinary();
 };
 
 $("#realTimeDebugCheckbox").click(

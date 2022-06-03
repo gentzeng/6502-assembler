@@ -38,18 +38,11 @@ export class LabelAddresses {
       return;
     }
 
-    let label = memoryEntry.value;
-
-    let highLowMark = "";
-    if (["<", ">"].includes(label.slice(0, 1))) {
-      //high-low-label
-      highLowMark = label.slice(0, 1);
-      label = label.slice(1);
-    }
+    let { label, highLowMark } = handleHighLowLabel.bind(this)(memoryEntry);
 
     let labelAddress = this[label];
     let labelAddressWord = labelAddress.word;
-    let lineNumber = memory.readByte(codePC).lineNumber;
+    let lineNumber = memoryEntry.lineNumber;
     if (label === labelAddressWord) {
       throw "Call insertLabelAddresses() only after calling scanLabels() and compileLines()!";
     }
@@ -68,14 +61,28 @@ export class LabelAddresses {
         new WordEntry(labelAddressWord, lineNumber).upperByteEntry
       );
     } else {
-      // is absolute opCod
+      // is absolute opCode
       memory.writeWord(codePC, new WordEntry(labelAddressWord, lineNumber));
     }
     return;
+
+    //helper
+    function handleHighLowLabel(memoryEntry) {
+      let label = memoryEntry.value;
+      let highLowMark = "";
+
+      if (["<", ">"].includes(label.slice(0, 1))) {
+        //high-low-label
+        highLowMark = label.slice(0, 1);
+        label = label.slice(1);
+      }
+      return { label, highLowMark };
+    }
   }
 
   #insertForBranch(codePC, labelAddress, labelAddressLineNumber, memory) {
     let offsetAddressWord;
+    //simulating two's complement
     if (labelAddress < codePC - 0x600) {
       // Backwards
       offsetAddressWord = 0xff - (codePC - 0x600 - labelAddress);

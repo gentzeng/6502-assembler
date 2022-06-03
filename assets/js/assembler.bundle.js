@@ -32411,18 +32411,11 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      return;
 	    }
 
-	    let label = memoryEntry.value;
-
-	    let highLowMark = "";
-	    if (["<", ">"].includes(label.slice(0, 1))) {
-	      //high-low-label
-	      highLowMark = label.slice(0, 1);
-	      label = label.slice(1);
-	    }
+	    let { label, highLowMark } = handleHighLowLabel.bind(this)(memoryEntry);
 
 	    let labelAddress = this[label];
 	    let labelAddressWord = labelAddress.word;
-	    let lineNumber = memory.readByte(codePC).lineNumber;
+	    let lineNumber = memoryEntry.lineNumber;
 	    if (label === labelAddressWord) {
 	      throw "Call insertLabelAddresses() only after calling scanLabels() and compileLines()!";
 	    }
@@ -32441,14 +32434,28 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	        new WordEntry(labelAddressWord, lineNumber).upperByteEntry
 	      );
 	    } else {
-	      // is absolute opCod
+	      // is absolute opCode
 	      memory.writeWord(codePC, new WordEntry(labelAddressWord, lineNumber));
 	    }
 	    return;
+
+	    //helper
+	    function handleHighLowLabel(memoryEntry) {
+	      let label = memoryEntry.value;
+	      let highLowMark = "";
+
+	      if (["<", ">"].includes(label.slice(0, 1))) {
+	        //high-low-label
+	        highLowMark = label.slice(0, 1);
+	        label = label.slice(1);
+	      }
+	      return { label, highLowMark };
+	    }
 	  }
 
 	  #insertForBranch(codePC, labelAddress, labelAddressLineNumber, memory) {
 	    let offsetAddressWord;
+	    //simulating two's complement
 	    if (labelAddress < codePC - 0x600) {
 	      // Backwards
 	      offsetAddressWord = 0xff - (codePC - 0x600 - labelAddress);
@@ -33143,6 +33150,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.regExp = {
 	      addressOnly: /^\*[\s]*=[\s]*([\$]?[0-9a-f]*)$/,
 	      label: /^(\w+):.*$/,
+	      labelWithEquAddrOnly: /^\w+:\s+(equ|EQU)\s+(\$[0-9a-f]+).*/,
 	      commandWithLeadLabel: /^\w+:\s*(\w+)\s*.*$/,
 	      command: /^(\w\w\w)\s*.*$/,
 	      paramWithLeadLabel: /^\w+:\s*\w+\s+([-]?.*?)/,
@@ -33153,16 +33161,18 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  scanLabel(labelAddresses) {
 	    this.labelAddresses = labelAddresses;
 	    if (this.#isLabel()) {
-	      if (this.label in this.labelAddresses) {
-	        let defLineNumber = this.labelAddresses[this.label].lineNumber;
+	      const label = this.label;
+	      if (label in this.labelAddresses) {
+	        let defLineNumber = this.labelAddresses[label].lineNumber;
 	        raiseLabelError(
 	          this.number,
-	          "Label '" + this.label + "' already defined at line " + defLineNumber
+	          "Label '" + label + "' already defined at line " + defLineNumber
 	        );
 	        return;
 	      }
 	      // Use label as Address provisionaly => will be read correctly later!
-	      labelAddresses[this.label] = new LabelAddress(this.label, this.number);
+	      labelAddresses[label] = new LabelAddress(label, this.number);
+	      console.log(label, labelAddresses[label]);
 	    }
 	    return;
 	  }
@@ -33213,6 +33223,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	  get label() {
 	    return this.#extract(this.regExp.label);
+	  }
+	  get addressFromlabelWithEquAddrOnly() {
+	    return this.#extract(this.regExp.labelWithEquAddrOnly);
 	  }
 	  get commandName() {
 	    let lineContent = this.content;
@@ -33266,6 +33279,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	  #isLabel() {
 	    if (this.content.match(this.regExp.label)) {
+	      return true;
+	    }
+	    return false;
+	  }
+	  #isLabelWithEquAddrOnly() {
+	    if (this.content.match(this.regExp.labelWithEquAddrOnly)) {
 	      return true;
 	    }
 	    return false;
@@ -35631,10 +35650,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 *  keyPress() - Store keycode in ZP $ff
 	 */
 	function keyPress(e) {
+	  if (!exports.codeRunning) {
+	    return; 
+	  }
 	  if (typeof window.event != "undefined") {
 	    e = window.event;
 	  }
 	  if (e.type == "keypress") {
+	    console.log("joooooooooooooooo");
 	    exports.memory.writeByte(0xff, new ByteEntry(e.which, 0xff));
 	  }
 	}
@@ -35713,7 +35736,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 *  resetEverything() - Reset CPU, memory and html (partly).
 	 */
 	function resetEverything() {
-	  resetEditorTest();
 	  exports.compiler = null;
 	  exports.error = false;
 	  exports.codeRunning = false;
@@ -35737,26 +35759,11 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  $("#hexViewerButton").prop("disabled", true);
 	  $("#hexDumpButton").prop("disabled", true);
 	  $("#plainHexDumpButton").prop("disabled", true);
-
-	  //helper
-	  function resetEditorTest() {
-	    if (typeof exports.codeToCompile !== "undefined") {
-	      exports.editor.dispatch({
-	        changes: {
-	          from: 0,
-	          to: exports.editor.state.doc.length,
-	          insert: exports.codeToCompile,
-	        },
-	      });
-	    }
-	  }
 	}
 
 	function compileCode() {
 	  resetEverything();
 	  resetMessageWindow();
-
-	  console.log(exports.editor);
 
 	  const codeToCompileDoc = exports.editor.state.doc;
 	  const codeToCompile = codeToCompileDoc.toString();
@@ -35843,6 +35850,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 
+	/*
+	 *  hexDump() - Dump binary as hex to new window in Hex Viewer style
+	 */
 	function hexViewer() {
 	  let w = window.open(
 	    "",
@@ -35943,7 +35953,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	/*
 	 *  hexDump() - Dump binary as hex to new window
 	 */
-
 	function hexDump({ plain = false } = {}) {
 	  let w = window.open(
 	    "",
@@ -35991,34 +36000,61 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 */
 	function runBinary() {
 	  if (exports.codeRunning) {
-	    /* Switch OFF everything */
-	    exports.codeRunning = false;
-	    $("#runButton").html("Run");
-	    $("#hexViewerButton").prop("disabled", false);
-	    $("#hexDumpButton").prop("disabled", false);
-	    $("#plainHexDumpButton").prop("disabled", false);
-	    $("#fileSelect").prop("disabled", false);
-	    if (!exports.debug) {
-	      exports.debuggeR.disable();
-	    }
-	    clearInterval(exports.myInterval);
+	    stopBinary();
 	  } else {
-	    $("#runButton").html("Stop");
-	    $("#hexViewerButton").prop("disabled", true);
-	    $("#hexDumpButton").prop("disabled", true);
-	    $("#plainHexDumpButton").prop("disabled", true);
-	    $("#fileSelect").prop("disabled", true);
-	    if (!exports.debug) {
-	      $("#stepButton").prop("disabled", !exports.debug);
-	      $("#gotoButton").prop("disabled", !exports.debug);
-	    } else {
-	      $("#stepButton").prop("disabled", false);
-	      $("#gotoButton").prop("disabled", false);
+	    startBinary();
+	  }
+	}
+
+	/*
+	 *  startBinary() - Start the running Binary
+	 */
+	function startBinary() {
+	  $("#runButton").html("Stop");
+	  $("#hexViewerButton").prop("disabled", true);
+	  $("#hexDumpButton").prop("disabled", true);
+	  $("#plainHexDumpButton").prop("disabled", true);
+	  $("#fileSelect").prop("disabled", true);
+	  if (!exports.debug) {
+	    $("#stepButton").prop("disabled", !exports.debug);
+	    $("#gotoButton").prop("disabled", !exports.debug);
+	  } else {
+	    $("#stepButton").prop("disabled", false);
+	    $("#gotoButton").prop("disabled", false);
+	  }
+	  exports.codeRunning = true;
+	  exports.myInterval = setInterval((_) => {
+	    multiExecute();
+	  }, 1);
+	}
+
+	/*
+	 *  runBinary() - Stop the running Binary
+	 */
+	function stopBinary() {
+	  resetEditor();
+	  exports.codeRunning = false;
+	  $("#runButton").html("Run");
+	  $("#hexViewerButton").prop("disabled", false);
+	  $("#hexDumpButton").prop("disabled", false);
+	  $("#plainHexDumpButton").prop("disabled", false);
+	  $("#fileSelect").prop("disabled", false);
+	  if (!exports.debug) {
+	    exports.debuggeR.disable();
+	  }
+	  clearInterval(exports.myInterval);
+
+	  //helper
+	  function resetEditor() {
+	    if (typeof exports.codeToCompile !== "undefined") {
+	      exports.editor.dispatch({
+	        changes: {
+	          from: 0,
+	          to: exports.editor.state.doc.length,
+	          insert: exports.codeToCompile,
+	        },
+	      });
 	    }
-	    exports.codeRunning = true;
-	    exports.myInterval = setInterval((_) => {
-	      multiExecute();
-	    }, 1);
 	  }
 	}
 
@@ -36222,8 +36258,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }));
 
 	$(".code-area").append(exports.editor.dom);
-	//exports.editor.contentDOM.onfocus(()=>{console.log("yea")})
-	exports.editor.contentDOM.onfocus = ()=>{resetEverything();};
+	exports.editor.contentDOM.onfocus = () => {
+	  stopBinary();
+	};
 
 	$("#realTimeDebugCheckbox").click(
 	  exports.debuggeR.toggle.bind(exports.debuggeR)
