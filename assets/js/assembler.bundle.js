@@ -35762,7 +35762,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	function setEditorLineNumbers() {
 	  const lineNumbersForEditor = exports.memory.getLineNumbersForEditor();
-	  const lineCount = exports.editor.viewState.state.doc.text.length;
+	  const lineCount = exports.editor.viewState.state.doc.length;
 
 	  const formatLineNumber = (n, _) => {
 	    let n_str = n.toString();
@@ -35774,7 +35774,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    n_str = addLeadingSpace(n_str, lineCount.toString().length);
 
 	    const lineNumber = 0x600 + lineNumbersForEditor[n];
-	    return `${fmtToHexBr(lineNumber)}|${n_str}`;
+	    return `${fmtToHexBr(lineNumber)} ${n_str}`;
 	  };
 
 	  exports.editor.dispatch({
@@ -36071,6 +36071,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }));
 
 	$(".code-area").append(exports.editor.dom);
+	$(".code-area").focus(()=>{console.log("jooooooooooo");});
+	$(".cm-editor").focus(()=>{console.log("jooooooooooo");});
+	$(".cm-focused").focus(()=>{console.log("jooooooooooo");});
 
 	$("#realTimeDebugCheckbox").click(
 	  exports.debuggeR.toggle.bind(exports.debuggeR)
