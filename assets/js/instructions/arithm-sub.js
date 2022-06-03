@@ -56,9 +56,9 @@ function substract({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
 
   function testSubstract(value) {
     if ((exports.reg.A ^ value) & 0x80) {
-      vflag = 1;
+      exports.flags.overflow._set();
     } else {
-      vflag = 0;
+      exports.flags.overflow.clear();
     }
 
     let tmp;
@@ -95,7 +95,7 @@ function substract({ name = "", addrMode = "", onlyLowerByte = false } = {}) {
           exports.flags.overflow.clear();
         }
       } else {
-        exports.flags.carr._set();
+        exports.flags.carry._set();
         if (exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
           exports.flags.overflow.clear();
         }

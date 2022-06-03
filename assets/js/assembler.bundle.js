@@ -33539,9 +33539,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	  function testSubstract(value) {
 	    if ((exports.reg.A ^ value) & 0x80) {
-	      vflag = 1;
+	      exports.flags.overflow._set();
 	    } else {
-	      vflag = 0;
+	      exports.flags.overflow.clear();
 	    }
 
 	    let tmp;
@@ -33578,7 +33578,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	          exports.flags.overflow.clear();
 	        }
 	      } else {
-	        exports.flags.carr._set();
+	        exports.flags.carry._set();
 	        if (exports.flags.getByteClearedOn("overflow") && w >= 0x180) {
 	          exports.flags.overflow.clear();
 	        }
@@ -36071,9 +36071,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }));
 
 	$(".code-area").append(exports.editor.dom);
-	$(".code-area").focus(()=>{console.log("jooooooooooo");});
-	$(".cm-editor").focus(()=>{console.log("jooooooooooo");});
-	$(".cm-focused").focus(()=>{console.log("jooooooooooo");});
 
 	$("#realTimeDebugCheckbox").click(
 	  exports.debuggeR.toggle.bind(exports.debuggeR)
