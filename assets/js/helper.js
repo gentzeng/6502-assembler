@@ -3,6 +3,14 @@ export function fmtToHexBr(value) {
   return "[" + fmtToHexIntern(value) + "]";
 }
 
+export function fmtToHexAddress(value) {
+  return "0x" + value.toString(16).padStart(3, 0);
+}
+
+export function fmtToHexView(value) {
+  return value.toString(16).padStart(2, 0);
+}
+
 export function fmtToHex(value) {
   return "0x" + value.toString(16).padStart(2, 0);
 }

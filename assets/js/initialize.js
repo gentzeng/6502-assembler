@@ -25,6 +25,7 @@ import {
   compileCode,
   runBinary,
   resetEverything,
+  hexViewer,
   hexDump,
   gotoAddr,
   toggleBinaryMode,
@@ -103,6 +104,7 @@ $("#resetButton").click((_) => {
   resetEverything();
   resetMessageWindow();
 });
+$("#hexViewerButton").click(hexViewer);
 $("#hexDumpButton").click(hexDump);
 $("#plainHexDumpButton").click(() => hexDump({ plain: true }));
 $("#largeModeButton").click(togglePresentationMode);
@@ -115,6 +117,7 @@ $("#illegalOpCodeCheckbox").prop("checked", false);
 
 $("#largeModeButton").prop("disabled", false);
 
+$("#hexViewerButton").prop("disabled", true);
 $("#hexDumpButton").prop("disabled", true);
 $("#plainHexDumpButton").prop("disabled", true);
 $("#resetButton").prop("disabled", false);

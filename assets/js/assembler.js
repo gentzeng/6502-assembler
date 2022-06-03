@@ -119,11 +119,12 @@ export function resetEverything() {
   $("#fileSelect").prop("disabled", false);
   $("#stepButton").prop("disabled", true);
   $("#gotoButton").prop("disabled", true);
+  $("#hexViewerButton").prop("disabled", true);
   $("#hexDumpButton").prop("disabled", true);
   $("#plainHexDumpButton").prop("disabled", true);
- 
+
   //helper
-  function resetEditorTest () {
+  function resetEditorTest() {
     if (typeof exports.codeToCompile !== "undefined") {
       exports.editor.dispatch({
         changes: {
@@ -142,7 +143,7 @@ export function compileCode() {
 
   const codeToCompileDoc = exports.editor.state.doc;
   const codeToCompile = codeToCompileDoc.toString();
-  exports.codeToCompile = codeToCompile
+  exports.codeToCompile = codeToCompile;
   if (codeToCompile === "") {
     resetEverything();
     printMessage("<b>No code in editor.<\b>");
@@ -186,6 +187,7 @@ export function compileCode() {
     $("#runButton").prop("disabled", false);
     $("#compileButton").prop("disabled", true);
     $("#fileSelect").prop("disabled", false);
+    $("#hexViewerButton").prop("disabled", false);
     $("#hexDumpButton").prop("disabled", false);
     $("#plainHexDumpButton").prop("disabled", false);
     return;
@@ -221,6 +223,108 @@ export function setEditorLineNumbers() {
       n = " " + n;
     }
     return n;
+  }
+}
+
+export function hexViewer() {
+  let w = window.open(
+    "",
+    "HexViewer",
+    "width=600,height=300,resizable=yes,scrollbars=yes,toolbar=no,location=no,menubar=no,status=no"
+  );
+
+  let html = "<html><head>";
+  html += "<meta charset='utf-8'";
+  html +=
+    "<link href='assets/css/style.css' rel='stylesheet' type='text/css' />";
+  html +=
+    "<link href='assets/css/bootstrap.min.css' rel='stylesheet' type='text/css' />";
+  html += "<title>HexViewer</title></head><body>";
+  html += "<div class='container-fluid'>";
+  html += "<div class='row d-flex justify-content-center'>";
+  html += "<div class='col vh-100 overflow-auto'>";
+  html += "<h3>";
+  html += "HexViewer";
+  html += "</h3>";
+  html += "<div class='dropdown'>";
+  html += "<button class='btn btn-light dropdown-toggle' type='button'";
+  html +=
+    "id='buttonDropDownOffset' data-bs-toggle='dropdown' aria-expanded='false'>";
+  html += "Choose Offset Size";
+  html += "</button>";
+  html += "<ul class='dropdown-menu' aria-labelledby='buttonDropDownOffset'>";
+  html +=
+    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>2</a></li>";
+  html +=
+    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>4</a></li>";
+  html +=
+    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>8</a></li>";
+  html +=
+    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>12</a></li>";
+  html +=
+    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>16</a></li>";
+  html += "</ul>";
+  html += "</div>";
+  html += "<div>";
+  html += "<a href='#idCodeBegin'>Goto begin of Codearea (0x600)</a>";
+  html += "</div>";
+  html += "<pre style='font-family:monospace'>";
+
+  html += "<div class='dumpHTML d-none' id='dumpHTML2'>";
+  html += exports.memory.hexViewer({ offset: 0x2 });
+  html += "-- [END]";
+  html += "</div>";
+
+  html += "<div class='dumpHTML' id='dumpHTML4'>";
+  html += exports.memory.hexViewer({ offset: 0x4 });
+  html += "-- [END]";
+  html += "</div>";
+
+  html += "<div class='dumpHTML d-none' id='dumpHTML8'>";
+  html += exports.memory.hexViewer({ offset: 0x8 });
+  html += "-- [END]";
+  html += "</div>";
+
+  html += "<div class='dumpHTML d-none' id='dumpHTML12'>";
+  html += exports.memory.hexViewer({ offset: 0xc });
+  html += "-- [END]";
+  html += "</div>";
+
+  html += "<div class='dumpHTML d-none' id='dumpHTML16'>";
+  html += exports.memory.hexViewer({ offset: 0x10 });
+  html += "-- [END]";
+  html += "</div>";
+
+  html += "</pre>";
+  html += "</div>";
+  html += "</div>";
+  html += "</div>";
+  html +=
+    "<script type='text/javascript' src='assets/js/bootstrap.bundle.min.js'></script>";
+  html += "<script>";
+  html += "function adjustOffset(offset) {\n";
+  html += "  const offsets = [2,4,8,12,16];\n";
+  html += "  offsets.forEach(offset_i => {\n";
+  html += "    const offset_i_str = offset_i.toString();\n";
+  html +=
+    "    const dumpElem = document.getElementById(`dumpHTML${offset_i_str}`)\n";
+  html += "    if (offset_i_str === offset) {\n";
+  html += "      if (dumpElem.classList.contains('d-none')) {\n";
+  html += "        dumpElem.classList.remove('d-none');\n";
+  html += "      }\n";
+  html += "    } else {\n";
+  html += "      dumpElem.classList.add('d-none');\n";
+  html += "    }\n";
+  html += "  });\n";
+  html += "}";
+  html += "</script>";
+  html += "</body></html>";
+  w.document.write(html);
+  w.document.close();
+
+  //helper
+  function adjustOffset(offset) {
+    $(".dumpHTML").html(exports.memory.hexViewer({ offset: offset }));
   }
 }
 
@@ -264,7 +368,7 @@ export function hexDump({ plain = false } = {}) {
   html += "</div>";
   html += "</div>";
   html +=
-    "<script type='text/javascript' src='assets/js/bootstrap.bundle.min.js'></script>";
+    "<script type='text/javascript' src='assets/js/bootstrap.min.js'></script>";
   html += "</body></html>";
   w.document.write(html);
   w.document.close();
@@ -278,6 +382,7 @@ export function runBinary() {
     /* Switch OFF everything */
     exports.codeRunning = false;
     $("#runButton").html("Run");
+    $("#hexViewerButton").prop("disabled", false);
     $("#hexDumpButton").prop("disabled", false);
     $("#plainHexDumpButton").prop("disabled", false);
     $("#fileSelect").prop("disabled", false);
@@ -287,6 +392,7 @@ export function runBinary() {
     clearInterval(exports.myInterval);
   } else {
     $("#runButton").html("Stop");
+    $("#hexViewerButton").prop("disabled", true);
     $("#hexDumpButton").prop("disabled", true);
     $("#plainHexDumpButton").prop("disabled", true);
     $("#fileSelect").prop("disabled", true);
@@ -402,6 +508,7 @@ export function executeInstruction() {
       $("#gotoButton").prop("disabled", true);
       $("#runButton").html("Run");
       $("#fileSelect").prop("disabled", false);
+      $("#hexViewerButton").prop("disabled", false);
       $("#hexDumpButton").prop("disabled", false);
       $("#plainHexDumpButton").prop("disabled", false);
     }

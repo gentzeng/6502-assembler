@@ -31519,6 +31519,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  return "[" + fmtToHexIntern(value) + "]";
 	}
 
+	function fmtToHexAddress(value) {
+	  return "0x" + value.toString(16).padStart(3, 0);
+	}
+
+	function fmtToHexView(value) {
+	  return value.toString(16).padStart(2, 0);
+	}
+
 	function fmtToHex(value) {
 	  return "0x" + value.toString(16).padStart(2, 0);
 	}
@@ -32172,6 +32180,35 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.pushByteToStack(wordEntry.lowerByteEntry);
 	  }
 
+	  hexViewer({ offset = 0x4 } = {}) {
+	    let dump = "";
+	    for (let address = 0x0; address < this.size; address += offset) {
+	      dump += "<br/>";
+	      if (address == 1536) {
+	        dump +=
+	          "<span id='idCodeBegin'><strong>Begin of code area</strong></span>";
+	        dump += "<br/>";
+	      }
+
+	      dump += " " + fmtToHexAddress(address) + "  ";
+	      let hexNumDump = "";
+	      let hexDescriptionDump = "";
+	      for (let i = 0; i < offset; i++) {
+	        const memoryEntry = this[address + i];
+	        if (typeof memoryEntry === "undefined") {
+	          hexNumDump += "   ";
+	          hexDescriptionDump += "    ";
+	          continue;
+	        }
+	        hexNumDump += " " + this[address + i].hexView();
+	        hexDescriptionDump += " " + this[address + i].hexDescriptionView();
+	      }
+	      dump += hexNumDump + "   | " + hexDescriptionDump;
+	      dump += "   " + fmtToHexAddress(address);
+	    }
+	    return dump;
+	  }
+
 	  dumpHTML() {
 	    let dump = "";
 	    this.forEach((memoryEntry, address) => {
@@ -32181,7 +32218,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	          "<span id='idCodeBegin'><strong>Begin of code area</strong></span>";
 	        dump += "<br/>";
 	      }
-	      dump += "  " + fmtToHex(address) + " : " + memoryEntry.toString();
+	      dump += "  " + fmtToHexAddress(address) + " : " + memoryEntry.toString();
 	    });
 	    return dump;
 	  }
@@ -32189,7 +32226,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    let dump = "";
 	    this.forEach((memoryEntry, address) => {
 	      dump += "<br/>";
-	      dump += "  " + fmtToHex(address) + " : " + fmtToHex(memoryEntry.value);
+	      dump +=
+	        "  " + fmtToHexAddress(address) + " : " + fmtToHex(memoryEntry.value);
 	    });
 	    return dump;
 	  }
@@ -32235,6 +32273,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      return true;
 	    }
 	    return false;
+	  }
+	  hexView() {
+	    return fmtToHexView(this.value);
+	  }
+	  hexDescriptionView() {
+	    return " " + this.hexView();
 	  }
 	}
 
@@ -32291,6 +32335,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	  get lowerByteEntry() {
 	    return new OpCodeByteEntry(this.value & 0xff, this.lineNumber);
+	  }
+	  hexDescriptionView() {
+	    return Command.getOpCodeName(this.value);
 	  }
 	}
 	OpCodeByteEntry.prototype.toString = function () {
@@ -35687,11 +35734,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  $("#fileSelect").prop("disabled", false);
 	  $("#stepButton").prop("disabled", true);
 	  $("#gotoButton").prop("disabled", true);
+	  $("#hexViewerButton").prop("disabled", true);
 	  $("#hexDumpButton").prop("disabled", true);
 	  $("#plainHexDumpButton").prop("disabled", true);
-	 
+
 	  //helper
-	  function resetEditorTest () {
+	  function resetEditorTest() {
 	    if (typeof exports.codeToCompile !== "undefined") {
 	      exports.editor.dispatch({
 	        changes: {
@@ -35754,6 +35802,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    $("#runButton").prop("disabled", false);
 	    $("#compileButton").prop("disabled", true);
 	    $("#fileSelect").prop("disabled", false);
+	    $("#hexViewerButton").prop("disabled", false);
 	    $("#hexDumpButton").prop("disabled", false);
 	    $("#plainHexDumpButton").prop("disabled", false);
 	    return;
@@ -35790,6 +35839,96 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	    return n;
 	  }
+	}
+
+	function hexViewer() {
+	  let w = window.open(
+	    "",
+	    "HexViewer",
+	    "width=600,height=300,resizable=yes,scrollbars=yes,toolbar=no,location=no,menubar=no,status=no"
+	  );
+
+	  let html = "<html><head>";
+	  html += "<meta charset='utf-8'";
+	  html +=
+	    "<link href='assets/css/style.css' rel='stylesheet' type='text/css' />";
+	  html +=
+	    "<link href='assets/css/bootstrap.min.css' rel='stylesheet' type='text/css' />";
+	  html += "<title>HexViewer</title></head><body>";
+	  html += "<div class='container-fluid'>";
+	  html += "<div class='row d-flex justify-content-center'>";
+	  html += "<div class='col vh-100 overflow-auto'>";
+	  html += "<h3>";
+	  html += "HexViewer";
+	  html += "</h3>";
+	  html += "<div class='dropdown'>";
+	  html += "<button class='btn btn-light dropdown-toggle' type='button'";
+	  html += "id='buttonDropDownOffset' data-bs-toggle='dropdown' aria-expanded='false'>";
+	  html += "Choose Offset Size";
+	  html += "</button>";
+	  html += "<ul class='dropdown-menu' aria-labelledby='buttonDropDownOffset'>";
+	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>2</a></li>";
+	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>4</a></li>";
+	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>8</a></li>";
+	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>12</a></li>";
+	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>16</a></li>";
+	  html += "</ul>";
+	  html += "</div>";
+	  html += "<div>";
+	  html += "<a href='#idCodeBegin'>Goto begin of Codearea (0x600)</a>";
+	  html += "</div>";
+	  html += "<pre style='font-family:monospace'>";
+
+	  html += "<div class='dumpHTML d-none' id='dumpHTML2'>";
+	  html += exports.memory.hexViewer({ offset: 0x2 });
+	  html += "-- [END]";
+	  html += "</div>";
+	  
+	  html += "<div class='dumpHTML' id='dumpHTML4'>";
+	  html += exports.memory.hexViewer({ offset: 0x4 });
+	  html += "-- [END]";
+	  html += "</div>";
+	  
+	  html += "<div class='dumpHTML d-none' id='dumpHTML8'>";
+	  html += exports.memory.hexViewer({ offset: 0x8 });
+	  html += "-- [END]";
+	  html += "</div>";
+	  
+	  html += "<div class='dumpHTML d-none' id='dumpHTML12'>";
+	  html += exports.memory.hexViewer({ offset: 0xc });
+	  html += "-- [END]";
+	  html += "</div>";
+	  
+	  html += "<div class='dumpHTML d-none' id='dumpHTML16'>";
+	  html += exports.memory.hexViewer({ offset: 0x10 });
+	  html += "-- [END]";
+	  html += "</div>";
+	  
+	  html += "</pre>";
+	  html += "</div>";
+	  html += "</div>";
+	  html += "</div>";
+	  html +=
+	    "<script type='text/javascript' src='assets/js/bootstrap.bundle.min.js'></script>";
+	  html += "<script>";
+	  html += "function adjustOffset(offset) {\n";
+	  html += "  const offsets = [2,4,8,12,16];\n";
+	  html += "  offsets.forEach(offset_i => {\n";
+	  html += "    const offset_i_str = offset_i.toString();\n";
+	  html += "    const dumpElem = document.getElementById(`dumpHTML${offset_i_str}`)\n";
+	  html += "    if (offset_i_str === offset) {\n";
+	  html += "      if (dumpElem.classList.contains('d-none')) {\n";
+	  html += "        dumpElem.classList.remove('d-none');\n";
+	  html += "      }\n";
+	  html += "    } else {\n";
+	  html += "      dumpElem.classList.add('d-none');\n";
+	  html += "    }\n";
+	  html += "  });\n";
+	  html += "}";
+	  html += "</script>"; 
+	  html += "</body></html>";
+	  w.document.write(html);
+	  w.document.close();
 	}
 
 	/*
@@ -35832,7 +35971,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  html += "</div>";
 	  html += "</div>";
 	  html +=
-	    "<script type='text/javascript' src='assets/js/bootstrap.bundle.min.js'></script>";
+	    "<script type='text/javascript' src='assets/js/bootstrap.min.js'></script>";
 	  html += "</body></html>";
 	  w.document.write(html);
 	  w.document.close();
@@ -35846,6 +35985,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    /* Switch OFF everything */
 	    exports.codeRunning = false;
 	    $("#runButton").html("Run");
+	    $("#hexViewerButton").prop("disabled", false);
 	    $("#hexDumpButton").prop("disabled", false);
 	    $("#plainHexDumpButton").prop("disabled", false);
 	    $("#fileSelect").prop("disabled", false);
@@ -35855,6 +35995,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    clearInterval(exports.myInterval);
 	  } else {
 	    $("#runButton").html("Stop");
+	    $("#hexViewerButton").prop("disabled", true);
 	    $("#hexDumpButton").prop("disabled", true);
 	    $("#plainHexDumpButton").prop("disabled", true);
 	    $("#fileSelect").prop("disabled", true);
@@ -35970,6 +36111,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      $("#gotoButton").prop("disabled", true);
 	      $("#runButton").html("Run");
 	      $("#fileSelect").prop("disabled", false);
+	      $("#hexViewerButton").prop("disabled", false);
 	      $("#hexDumpButton").prop("disabled", false);
 	      $("#plainHexDumpButton").prop("disabled", false);
 	    }
@@ -36088,6 +36230,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  resetEverything();
 	  resetMessageWindow();
 	});
+	$("#hexViewerButton").click(hexViewer);
 	$("#hexDumpButton").click(hexDump);
 	$("#plainHexDumpButton").click(() => hexDump({ plain: true }));
 	$("#largeModeButton").click(togglePresentationMode);
@@ -36100,6 +36243,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	$("#largeModeButton").prop("disabled", false);
 
+	$("#hexViewerButton").prop("disabled", true);
 	$("#hexDumpButton").prop("disabled", true);
 	$("#plainHexDumpButton").prop("disabled", true);
 	$("#resetButton").prop("disabled", false);

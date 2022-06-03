@@ -28,10 +28,25 @@
                 <button class="btn btn-light px-1" id="resetButton" aria-current="page" href="/admin">Reset</button>
               </li>
               <li class="nav-item me-2">
-                <button class="btn btn-light px-1" id="hexDumpButton" aria-current="page" href="/admin">hexDump</button>
-              </li>
-              <li class="nav-item me-2">
-                <button class="btn btn-light px-1" id="plainHexDumpButton" aria-current="page" href="/admin">PlainHexDump</button>
+                <div class="dropdown">
+                  <button class="btn btn-light dropdown-toggle" type="button" id="dropdownMenuButton1" data-bs-toggle="dropdown" aria-expanded="false">
+                    HexViewer 
+                  </button>
+                  <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton1">
+                      <li>
+                        <!-- <a class="dropdown-item" href="#">Action</a> -->
+                        <button class="dropdown-item" id="hexViewerButton" aria-current="page" href="/admin">HexViewer</button>
+                      </li>
+                      <li>
+                        <!-- <a class="dropdown-item" href="#">Another action</a> -->
+                        <button class="dropdown-item" id="hexDumpButton" aria-current="page" href="/admin">HexDump</button>
+                      </li>
+                      <li>
+                        <!-- <a class="dropdown-item" href="#">Something else here</a> -->
+                        <button class="dropdown-item" id="plainHexDumpButton" aria-current="page" href="/admin">PlainHexDump</button>
+                      </li>
+                  </ul>
+                </div>
               </li>
               <li class="nav-item me-2 m-auto">
                 <button class="btn btn-light px-1" id="largeModeButton" aria-current="page" href="/admin">Large Mode</button>
@@ -167,7 +182,7 @@
     </div>
   </div>
 
-  <script type="text/javascript" src="assets/js/bootstrap.bundle.min.js"></script>
+  <script type="text/javascript" src="assets/js/bootstrap.min.js"></script>
   <script type="text/javascript" src="assets/js/assembler.bundle.js"></script>
   <script>
     let headerHeight = 56

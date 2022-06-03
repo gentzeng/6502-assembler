@@ -1,4 +1,9 @@
-import { getLowerByte, fmtToHex } from "./helper";
+import {
+  getLowerByte,
+  fmtToHex,
+  fmtToHexAddress,
+  fmtToHexView,
+} from "./helper";
 import { Command } from "./compiler-command";
 import { raiseStackEmpty, raiseStackOverflow } from "./message";
 
@@ -143,6 +148,35 @@ export class Memory extends Array {
     this.pushByteToStack(wordEntry.lowerByteEntry);
   }
 
+  hexViewer({ offset = 0x4 } = {}) {
+    let dump = "";
+    for (let address = 0x0; address < this.size; address += offset) {
+      dump += "<br/>";
+      if (address == 1536) {
+        dump +=
+          "<span id='idCodeBegin'><strong>Begin of code area</strong></span>";
+        dump += "<br/>";
+      }
+
+      dump += " " + fmtToHexAddress(address) + "  ";
+      let hexNumDump = "";
+      let hexDescriptionDump = "";
+      for (let i = 0; i < offset; i++) {
+        const memoryEntry = this[address + i];
+        if (typeof memoryEntry === "undefined") {
+          hexNumDump += "   ";
+          hexDescriptionDump += "    ";
+          continue;
+        }
+        hexNumDump += " " + this[address + i].hexView();
+        hexDescriptionDump += " " + this[address + i].hexDescriptionView();
+      }
+      dump += hexNumDump + "   | " + hexDescriptionDump;
+      dump += "   " + fmtToHexAddress(address);
+    }
+    return dump;
+  }
+
   dumpHTML() {
     let dump = "";
     this.forEach((memoryEntry, address) => {
@@ -152,7 +186,7 @@ export class Memory extends Array {
           "<span id='idCodeBegin'><strong>Begin of code area</strong></span>";
         dump += "<br/>";
       }
-      dump += "  " + fmtToHex(address) + " : " + memoryEntry.toString();
+      dump += "  " + fmtToHexAddress(address) + " : " + memoryEntry.toString();
     });
     return dump;
   }
@@ -160,7 +194,8 @@ export class Memory extends Array {
     let dump = "";
     this.forEach((memoryEntry, address) => {
       dump += "<br/>";
-      dump += "  " + fmtToHex(address) + " : " + fmtToHex(memoryEntry.value);
+      dump +=
+        "  " + fmtToHexAddress(address) + " : " + fmtToHex(memoryEntry.value);
     });
     return dump;
   }
@@ -206,6 +241,12 @@ export class MemoryEntry {
       return true;
     }
     return false;
+  }
+  hexView() {
+    return fmtToHexView(this.value);
+  }
+  hexDescriptionView() {
+    return " " + this.hexView();
   }
 }
 
@@ -262,6 +303,9 @@ export class OpCodeByteEntry extends MemoryEntry {
 
   get lowerByteEntry() {
     return new OpCodeByteEntry(this.value & 0xff, this.lineNumber);
+  }
+  hexDescriptionView() {
+    return Command.getOpCodeName(this.value);
   }
 }
 OpCodeByteEntry.prototype.toString = function () {
