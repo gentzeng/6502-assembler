@@ -98,6 +98,7 @@ export function Load({ file } = {}) {
  *  resetEverything() - Reset CPU, memory and html (partly).
  */
 export function resetEverything() {
+  resetEditorTest();
   exports.compiler = null;
   exports.error = false;
   exports.codeRunning = false;
@@ -120,6 +121,19 @@ export function resetEverything() {
   $("#gotoButton").prop("disabled", true);
   $("#hexDumpButton").prop("disabled", true);
   $("#plainHexDumpButton").prop("disabled", true);
+ 
+  //helper
+  function resetEditorTest () {
+    if (typeof exports.codeToCompile !== "undefined") {
+      exports.editor.dispatch({
+        changes: {
+          from: 0,
+          to: exports.editor.state.doc.length,
+          insert: exports.codeToCompile,
+        },
+      });
+    }
+  }
 }
 
 export function compileCode() {
@@ -128,6 +142,7 @@ export function compileCode() {
 
   const codeToCompileDoc = exports.editor.state.doc;
   const codeToCompile = codeToCompileDoc.toString();
+  exports.codeToCompile = codeToCompile
   if (codeToCompile === "") {
     resetEverything();
     printMessage("<b>No code in editor.<\b>");

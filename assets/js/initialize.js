@@ -12,6 +12,8 @@ import "jquery";
 import { EditorState, EditorView, basicSetup } from "@codemirror/basic-setup";
 import { lineNumbers } from "@codemirror/gutter";
 import { Compartment } from "@codemirror/state";
+//import { assembler6502 } from "6502assemblerCodeMix6";
+//import { langTest } from "codemirror6langtest";
 import { StreamLanguage } from "@codemirror/stream-parser";
 import { gas } from "@codemirror/legacy-modes/mode/gas";
 import { foldGutter } from "@codemirror/fold";
@@ -75,6 +77,8 @@ exports.allowIllegalOpcode;
       extensions: [
         basicSetup,
         StreamLanguage.define(gas),
+        //assembler6502(),
+        //langTest(),
         foldGutter(),
         exports.lineNumberCompartment.of(lineNumbers()),
       ],

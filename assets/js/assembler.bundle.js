@@ -32446,9 +32446,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    highLowLabel: /^#[<>]\w+/,
 	    zeroPageHexNo: /^\$([0-9a-f]{1,2})/,
 	    zeroPageDecNo: /^([0-9]{1,3})/,
-	    absoluteHexNo: /^\$([0-9a-f]{3,4})/,
+	    absoluteHexNo: /^\$([0-9a-f]{1,4})/, // Todo:, wht not length 1,4?
 	    absoluteDecNo: /^([0-9]{1,5})/, // Todo: Why not only length of 4,5?
-	    absoluteHexNoIndirect: /^\$\(([0-9a-f]{3,4})\)/,
+	    absoluteHexNoIndirect: /^\$\(([0-9a-f]{1,4})\)/,
 	    absoluteDecNoIndirect: /^\(([0-9]{1,5})\)/, // Todo: Why not only length of 4,5?
 	    indirectHexNo: /^\(\$([0-9a-f]{1,2}).*/,
 	  };
@@ -35666,6 +35666,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 *  resetEverything() - Reset CPU, memory and html (partly).
 	 */
 	function resetEverything() {
+	  resetEditorTest();
 	  exports.compiler = null;
 	  exports.error = false;
 	  exports.codeRunning = false;
@@ -35688,6 +35689,19 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  $("#gotoButton").prop("disabled", true);
 	  $("#hexDumpButton").prop("disabled", true);
 	  $("#plainHexDumpButton").prop("disabled", true);
+	 
+	  //helper
+	  function resetEditorTest () {
+	    if (typeof exports.codeToCompile !== "undefined") {
+	      exports.editor.dispatch({
+	        changes: {
+	          from: 0,
+	          to: exports.editor.state.doc.length,
+	          insert: exports.codeToCompile,
+	        },
+	      });
+	    }
+	  }
 	}
 
 	function compileCode() {
@@ -35696,6 +35710,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	  const codeToCompileDoc = exports.editor.state.doc;
 	  const codeToCompile = codeToCompileDoc.toString();
+	  exports.codeToCompile = codeToCompile;
 	  if (codeToCompile === "") {
 	    resetEverything();
 	    printMessage("<b>No code in editor.<\b>");
@@ -36047,6 +36062,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      extensions: [
 	        basicSetup,
 	        StreamLanguage.define(gas),
+	        //assembler6502(),
+	        //langTest(),
 	        foldGutter(),
 	        exports.lineNumberCompartment.of(lineNumbers()),
 	      ],
