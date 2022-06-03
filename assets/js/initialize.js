@@ -87,12 +87,16 @@ exports.allowIllegalOpcode;
   }));
 
 $(".code-area").append(exports.editor.dom);
+exports.editor.contentDOM.onfocus = () => {
+  resetEverything();
+};
 
 $("#realTimeDebugCheckbox").click(
   exports.debuggeR.toggle.bind(exports.debuggeR)
 );
 $("#binaryCheckbox").click(toggleBinaryMode);
 $("#screen").click(toggleScreenSize);
+
 $("#illegalOpCodeCheckbox").click(toggleIllegalOpCode);
 
 // $("#code").keypress(disableButtons);

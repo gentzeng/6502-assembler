@@ -35756,6 +35756,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  resetEverything();
 	  resetMessageWindow();
 
+	  console.log(exports.editor);
+
 	  const codeToCompileDoc = exports.editor.state.doc;
 	  const codeToCompile = codeToCompileDoc.toString();
 	  exports.codeToCompile = codeToCompile;
@@ -35863,15 +35865,21 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  html += "</h3>";
 	  html += "<div class='dropdown'>";
 	  html += "<button class='btn btn-light dropdown-toggle' type='button'";
-	  html += "id='buttonDropDownOffset' data-bs-toggle='dropdown' aria-expanded='false'>";
+	  html +=
+	    "id='buttonDropDownOffset' data-bs-toggle='dropdown' aria-expanded='false'>";
 	  html += "Choose Offset Size";
 	  html += "</button>";
 	  html += "<ul class='dropdown-menu' aria-labelledby='buttonDropDownOffset'>";
-	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>2</a></li>";
-	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>4</a></li>";
-	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>8</a></li>";
-	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>12</a></li>";
-	  html += "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>16</a></li>";
+	  html +=
+	    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>2</a></li>";
+	  html +=
+	    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>4</a></li>";
+	  html +=
+	    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>8</a></li>";
+	  html +=
+	    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>12</a></li>";
+	  html +=
+	    "<li><a class='dropdown-item' href='#' onClick='adjustOffset(this.innerHTML)'>16</a></li>";
 	  html += "</ul>";
 	  html += "</div>";
 	  html += "<div>";
@@ -35883,27 +35891,27 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  html += exports.memory.hexViewer({ offset: 0x2 });
 	  html += "-- [END]";
 	  html += "</div>";
-	  
+
 	  html += "<div class='dumpHTML' id='dumpHTML4'>";
 	  html += exports.memory.hexViewer({ offset: 0x4 });
 	  html += "-- [END]";
 	  html += "</div>";
-	  
+
 	  html += "<div class='dumpHTML d-none' id='dumpHTML8'>";
 	  html += exports.memory.hexViewer({ offset: 0x8 });
 	  html += "-- [END]";
 	  html += "</div>";
-	  
+
 	  html += "<div class='dumpHTML d-none' id='dumpHTML12'>";
 	  html += exports.memory.hexViewer({ offset: 0xc });
 	  html += "-- [END]";
 	  html += "</div>";
-	  
+
 	  html += "<div class='dumpHTML d-none' id='dumpHTML16'>";
 	  html += exports.memory.hexViewer({ offset: 0x10 });
 	  html += "-- [END]";
 	  html += "</div>";
-	  
+
 	  html += "</pre>";
 	  html += "</div>";
 	  html += "</div>";
@@ -35915,7 +35923,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  html += "  const offsets = [2,4,8,12,16];\n";
 	  html += "  offsets.forEach(offset_i => {\n";
 	  html += "    const offset_i_str = offset_i.toString();\n";
-	  html += "    const dumpElem = document.getElementById(`dumpHTML${offset_i_str}`)\n";
+	  html +=
+	    "    const dumpElem = document.getElementById(`dumpHTML${offset_i_str}`)\n";
 	  html += "    if (offset_i_str === offset) {\n";
 	  html += "      if (dumpElem.classList.contains('d-none')) {\n";
 	  html += "        dumpElem.classList.remove('d-none');\n";
@@ -35925,7 +35934,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  html += "    }\n";
 	  html += "  });\n";
 	  html += "}";
-	  html += "</script>"; 
+	  html += "</script>";
 	  html += "</body></html>";
 	  w.document.write(html);
 	  w.document.close();
@@ -36213,12 +36222,15 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }));
 
 	$(".code-area").append(exports.editor.dom);
+	//exports.editor.contentDOM.onfocus(()=>{console.log("yea")})
+	exports.editor.contentDOM.onfocus = ()=>{resetEverything();};
 
 	$("#realTimeDebugCheckbox").click(
 	  exports.debuggeR.toggle.bind(exports.debuggeR)
 	);
 	$("#binaryCheckbox").click(toggleBinaryMode);
 	$("#screen").click(toggleScreenSize);
+
 	$("#illegalOpCodeCheckbox").click(toggleIllegalOpCode);
 
 	// $("#code").keypress(disableButtons);

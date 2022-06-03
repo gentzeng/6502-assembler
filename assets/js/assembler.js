@@ -1,9 +1,4 @@
-import { EditorState, EditorView, basicSetup } from "@codemirror/basic-setup";
-import { Compartment } from "@codemirror/state";
 import { lineNumbers } from "@codemirror/gutter";
-import { StreamLanguage } from "@codemirror/stream-parser";
-import { gas } from "@codemirror/legacy-modes/mode/gas";
-import { foldGutter } from "@codemirror/fold";
 import { Compiler } from "./compiler";
 import { Command } from "./compiler-command";
 import { fmtToHex, fmtToHexBr } from "./helper";
