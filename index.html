@@ -1,57 +1,128 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>6502 assembler and emulator</title>
-  <meta charset="utf-8">
-  <link rel="stylesheet" type="text/css" href="assets/css/bootstrap.min.css">
-  <link rel="stylesheet" type="text/css" href="assets/css/style.css">
-</head>
-<body>
-  <div class="container-fluid p-0 m-0">
-    <div class="row no-gutters">
-      <header class="">
-        <nav class="navbar navbar-expand-md navbar-dark bg-dark">
-          <div class="container-fluid">
-            <a class="navbar-brand" href="/">6502Assembler</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-              <span class="navbar-toggler-icon"></span>
-            </button>
-          <div class="collapse navbar-collapse" id="navbarSupportedContent">
-            <ul class="navbar-nav me-auto mb-lg-0">
-              <li class="nav-item me-2">
-                <button class="btn btn-light px-1" id="compileButton" aria-current="page" href="/admin">compile</button>
-              </li>
-              <li class="nav-item me-2">
-                <button class="btn btn-light px-1" id="runButton" aria-current="page" href="/admin">Run</button>
-              </li>
-              <li class="nav-item me-2">
-                <button class="btn btn-light px-1" id="resetButton" aria-current="page" href="/admin">Reset</button>
-              </li>
-              <li class="nav-item me-2">
-                <div class="dropdown">
-                  <button class="btn btn-light dropdown-toggle" type="button" id="dropdownMenuButton1" data-bs-toggle="dropdown" aria-expanded="false">
-                    HexViewer 
-                  </button>
-                  <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton1">
-                      <li>
-                        <!-- <a class="dropdown-item" href="#">Action</a> -->
-                        <button class="dropdown-item" id="hexViewerButton" aria-current="page" href="/admin">HexViewer</button>
-                      </li>
-                      <li>
-                        <!-- <a class="dropdown-item" href="#">Another action</a> -->
-                        <button class="dropdown-item" id="hexDumpButton" aria-current="page" href="/admin">HexDump</button>
-                      </li>
-                      <li>
-                        <!-- <a class="dropdown-item" href="#">Something else here</a> -->
-                        <button class="dropdown-item" id="plainHexDumpButton" aria-current="page" href="/admin">PlainHexDump</button>
-                      </li>
-                  </ul>
-                </div>
-              </li>
-              <li class="nav-item me-2 m-auto">
-                <button class="btn btn-light px-1" id="largeModeButton" aria-current="page" href="/admin">Large Mode</button>
-              </li>
-              <!-- <li class="nav-item me-2 m-auto dropdown">
+  <head>
+    <title>6502 assembler and emulator</title>
+    <meta charset="utf-8" />
+    <link
+      rel="stylesheet"
+      type="text/css"
+      href="assets/css/bootstrap.min.css"
+    />
+    <link rel="stylesheet" type="text/css" href="assets/css/style.css" />
+  </head>
+  <body>
+    <div class="container-fluid p-0 m-0">
+      <div class="row no-gutters">
+        <header class="">
+          <nav class="navbar navbar-expand-md navbar-dark bg-dark">
+            <div class="container-fluid">
+              <a class="navbar-brand" href="/">6502Assembler</a>
+              <button
+                class="navbar-toggler"
+                type="button"
+                data-bs-toggle="collapse"
+                data-bs-target="#navbarSupportedContent"
+                aria-controls="navbarSupportedContent"
+                aria-expanded="false"
+                aria-label="Toggle navigation"
+              >
+                <span class="navbar-toggler-icon"></span>
+              </button>
+              <div class="collapse navbar-collapse" id="navbarSupportedContent">
+                <ul
+                  class="navbar-nav me-auto mb-lg-0"
+                  style="margin-top: -0.25em"
+                >
+                  <li class="nav-item me-2 mt-1">
+                    <button
+                      class="btn btn-light px-1"
+                      id="compileButton"
+                      aria-current="page"
+                      href="/admin"
+                    >
+                      compile
+                    </button>
+                  </li>
+                  <li class="nav-item me-2 mt-1">
+                    <button
+                      class="btn btn-light px-1"
+                      id="runButton"
+                      aria-current="page"
+                      href="/admin"
+                    >
+                      Run
+                    </button>
+                  </li>
+                  <li class="nav-item me-2 mt-1">
+                    <button
+                      class="btn btn-light px-1"
+                      id="resetButton"
+                      aria-current="page"
+                      href="/admin"
+                    >
+                      Reset
+                    </button>
+                  </li>
+                  <li class="nav-item me-2 mt-1">
+                    <div class="dropdown">
+                      <button
+                        class="btn btn-light dropdown-toggle"
+                        type="button"
+                        id="viewModeDropdown"
+                        data-bs-toggle="dropdown"
+                        aria-expanded="false"
+                      >
+                        ViewModes
+                      </button>
+                      <ul
+                        class="dropdown-menu"
+                        aria-labelledby="viewModeDropdown"
+                      >
+                        <li>
+                          <button
+                            class="dropdown-item"
+                            id="hexViewerButton"
+                            aria-current="page"
+                            href="/admin"
+                          >
+                            HexViewer
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            class="dropdown-item"
+                            id="hexDumpButton"
+                            aria-current="page"
+                            href="/admin"
+                          >
+                            HexDump
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            class="dropdown-item"
+                            id="plainHexDumpButton"
+                            aria-current="page"
+                            href="/admin"
+                          >
+                            PlainHexDump
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            class="dropdown-item"
+                            id="largeModeButton"
+                            aria-current="page"
+                            href="/admin"
+                          >
+                            Large Mode
+                          </button>
+                        </li>
+                      </ul>
+                    </div>
+                  </li>
+
+                  <!-- <li class="nav-item me-2 m-auto dropdown">
                 <select class="fileSelect" id="fileSelect">
                   <option>Open project</option>
                   <option value="space-invaders.asm">space-invaders.asm</option>
@@ -87,92 +158,169 @@
                   <option>starfield2d.asm</option>
                   <option>triangles.asm</option>
                   <option>zookeeper.asm</option>
-                </select> -->
-              </li>
-            </ul>
+                </select>
+              </li> -->
+                </ul>
+              </div>
             </div>
-          </div>
-        </nav>
-      </header>
-    </div>
-    <div class="row contentRow" id="contentRow">
-      <div class="col-xxl-8 col-xl-8 col-md-8 col-sm-8 col-8 h-100 mt-2 pb-2">
-        <div class="row h-100 mx-2 my-0" id="dragArea">
-          <div class="col h-adjust px-0" id="codeAreaCol">
-            <div class="code-area h-100"></div>
-          </div>
-          <div class="w-100 border divDrag" id="idDrag"></div>
-          <div class="col h-adjust border px-0" id="messagesCol">
-            <div class=" messages-panel h-100 mw-100 overflow-auto" id="messages"></div>
+          </nav>
+        </header>
+      </div>
+      <div class="row contentRow" id="contentRow">
+        <div class="col-xxl-8 col-xl-8 col-md-8 col-sm-8 col-8 h-100 mt-2 pb-2">
+          <div class="row h-100 mx-2 my-0" id="dragArea">
+            <div class="col h-adjust px-0" id="codeAreaCol">
+              <div class="code-area h-100"></div>
+            </div>
+            <div class="w-100 border divDrag" id="idDrag"></div>
+            <div class="col h-adjust border px-0" id="messagesCol">
+              <div
+                class="messages-panel h-100 mw-100 overflow-auto"
+                id="messages"
+              ></div>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="col mt-2 vh-100 overflow-hidden">
-        <div class="row d-flex flex-row">
-          <div class="col-xxl-12 col-xl-12 col-lg-12 col-md-12 col-sm-12 col-12 d-flex justify-content-center">
-            <div id="screen"></div>
-          </div>
-          <div class="w-100 mb-2" id="infoColStacked"></div>
-          <div class="col">
-            <div class="row mx-2">
-              <div class="col debug-info">
-                <div class="debug-info-label">A</div>
-                <div class="debug-info-content" id="debug-info-content-A"></div>
-              </div>
-              <div class="w-100 d-xxl-none d-xl-none d-lg-block d-md-block d-sm-block d-block"></div>
-              <div class="col debug-info">
-                <div class="debug-info-label">X</div>
-                <div class="debug-info-content" id="debug-info-content-X"></div>
-              </div>
-              <div class="w-100"></div>
-              <div class="col debug-info">
-                <div class="debug-info-label">Y</div>
-                <div class="debug-info-content" id="debug-info-content-Y"></div>
-              </div>
-              <div class="w-100 d-xxl-none d-xl-none d-lg-block d-md-block d-sm-block d-block"></div>
-              <div class="col debug-info">
-                <div class="debug-info-label">SP</div>
-                <div class="debug-info-content" id="debug-info-content-SP"></div>
-              </div>
-              <div class="w-100"></div>
-              <div class="col debug-info">
-                <div class="debug-info-label">PC</div>
-                <div class="debug-info-content" id="debug-info-content-PC"></div>
-              </div>
-              <div class="w-100 d-xxl-none d-xl-none d-lg-block d-md-block d-sm-block d-block"></div>
-              <div class="col debug-info debug-info-status">
-                <div class="debug-info-label">P</div>
-                <div class="debug-info-content" id="debug-info-content-P"></div>
-              </div>
-              <div class="w-100"></div>
-              <div class="col">
-                <input class="form-check-input" type="checkbox" id="realTimeDebugCheckbox">
-                <label class="form-check-label checkboxLabel" for="realTimeDebugCheckbox">Realtime Debug</label>
-              </div>
-              <div class="w-100 d-xxl-none d-xl-none d-lg-none d-md-block d-sm-block d-block mb-2"></div>
-              <div class="col">
-                <input class="form-check-input" type="checkbox" id="binaryCheckbox">
-                <label class="form-check-label checkboxLabel" for="binaryCheckbox">Binary</label>
-              </div>
-              <div class="w-100"></div>
-              <div class="col">
-                <input class="form-check-input" type="checkbox" id="illegalOpCodeCheckbox">
-                <label class="form-check-label checkboxLabel" for="illegalOpCodeCheckbox">Illegal Opcode</label>
-              </div>
-              <div class="w-100 mb-2"></div>
-              <div class="col">
-                <button class="w-100 btn btn-light border-dark d-inline-block" value="Step" id="stepButton">Step</button>
-              </div>
-              <div class="w-100 d-xxl-none d-xl-none d-lg-none d-md-none d-sm-block d-block mb-2"></div>
-              <div class="col">
-                <button class="w-100 btn btn-light border-dark d-inline-block" value="Jump to.." id="gotoButton">Jump to</button>
-              </div>
-              <div class="w-100 mb-2"></div>
+        <div class="col mt-2 vh-100 overflow-hidden">
+          <div class="row d-flex flex-row">
+            <div
+              class="col-xxl-12 col-xl-12 col-lg-12 col-md-12 col-sm-12 col-12 d-flex justify-content-center"
+            >
+              <div id="screen"></div>
             </div>
-            <div class="row mx-2">
-              <div class="col w-100">
-                <div class="slidecontainer">
-                  <input type="range" min="0" max="8" value="5" class="slider" id="stepsSlider">
+            <div class="w-100 mb-2" id="infoColStacked"></div>
+            <div class="col">
+              <div class="row mx-2">
+                <div class="col debug-info">
+                  <div class="debug-info-label">A</div>
+                  <div
+                    class="debug-info-content"
+                    id="debug-info-content-A"
+                  ></div>
+                </div>
+                <div
+                  class="w-100 d-xxl-none d-xl-none d-lg-block d-md-block d-sm-block d-block"
+                ></div>
+                <div class="col debug-info">
+                  <div class="debug-info-label">X</div>
+                  <div
+                    class="debug-info-content"
+                    id="debug-info-content-X"
+                  ></div>
+                </div>
+                <div class="w-100"></div>
+                <div class="col debug-info">
+                  <div class="debug-info-label">Y</div>
+                  <div
+                    class="debug-info-content"
+                    id="debug-info-content-Y"
+                  ></div>
+                </div>
+                <div
+                  class="w-100 d-xxl-none d-xl-none d-lg-block d-md-block d-sm-block d-block"
+                ></div>
+                <div class="col debug-info">
+                  <div class="debug-info-label">SP</div>
+                  <div
+                    class="debug-info-content"
+                    id="debug-info-content-SP"
+                  ></div>
+                </div>
+                <div class="w-100"></div>
+                <div class="col debug-info">
+                  <div class="debug-info-label">PC</div>
+                  <div
+                    class="debug-info-content"
+                    id="debug-info-content-PC"
+                  ></div>
+                </div>
+                <div
+                  class="w-100 d-xxl-none d-xl-none d-lg-block d-md-block d-sm-block d-block"
+                ></div>
+                <div class="col debug-info debug-info-status">
+                  <div class="debug-info-label">P</div>
+                  <div
+                    class="debug-info-content"
+                    id="debug-info-content-P"
+                  ></div>
+                </div>
+                <div class="w-100"></div>
+                <div class="col">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="realTimeDebugCheckbox"
+                  />
+                  <label
+                    class="form-check-label checkboxLabel"
+                    for="realTimeDebugCheckbox"
+                    >Realtime Debug</label
+                  >
+                </div>
+                <div
+                  class="w-100 d-xxl-none d-xl-none d-lg-none d-md-block d-sm-block d-block mb-2"
+                ></div>
+                <div class="col">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="binaryCheckbox"
+                  />
+                  <label
+                    class="form-check-label checkboxLabel"
+                    for="binaryCheckbox"
+                    >Binary</label
+                  >
+                </div>
+                <div class="w-100"></div>
+                <div class="col">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    id="illegalOpCodeCheckbox"
+                  />
+                  <label
+                    class="form-check-label checkboxLabel"
+                    for="illegalOpCodeCheckbox"
+                    >Illegal Opcode</label
+                  >
+                </div>
+                <div class="w-100 mb-2"></div>
+                <div class="col">
+                  <button
+                    class="w-100 btn btn-light border-dark d-inline-block"
+                    value="Step"
+                    id="stepButton"
+                  >
+                    Step
+                  </button>
+                </div>
+                <div
+                  class="w-100 d-xxl-none d-xl-none d-lg-none d-md-none d-sm-block d-block mb-2"
+                ></div>
+                <div class="col">
+                  <button
+                    class="w-100 btn btn-light border-dark d-inline-block"
+                    value="Jump to.."
+                    id="gotoButton"
+                  >
+                    Jump to
+                  </button>
+                </div>
+                <div class="w-100 mb-2"></div>
+              </div>
+              <div class="row mx-2">
+                <div class="col w-100">
+                  <div class="slidecontainer">
+                    <input
+                      type="range"
+                      min="0"
+                      max="8"
+                      value="5"
+                      class="slider"
+                      id="stepsSlider"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -180,62 +328,72 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <script type="text/javascript" src="assets/js/bootstrap.min.js"></script>
-  <script type="text/javascript" src="assets/js/assembler.bundle.js"></script>
-  <script>
-    let headerHeight = 56
-    let dragAreaYBegin = headerHeight + 8
-    let dragAreaHeight = parseInt($("#dragArea").css("height"), 10)
-    let codeAreaHeightMin = 5
-    let codeAreaHeightMiddle = (dragAreaHeight / 2)
-    let codeAreaHeightMax = dragAreaHeight - 5
-    let divDrag = $("#idDrag")
-    let codeAreaCol = $("#codeAreaCol")
-    let messagesCol = $("#messagesCol")
-    divDrag.mousedown(function(event){
-      // divDrag.css("position", "absolute")
-      divDrag.css("zIndex", "1000")
-      document.body.append(divDrag)
+    <script type="text/javascript" src="assets/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="assets/js/assembler.bundle.js"></script>
+    <script>
+      let headerHeight = 56;
+      let dragAreaYBegin = headerHeight + 8;
+      let dragAreaHeight = parseInt($("#dragArea").css("height"), 10);
+      let codeAreaHeightMin = 5;
+      let codeAreaHeightMiddle = dragAreaHeight / 2;
+      let codeAreaHeightMax = dragAreaHeight - 5;
+      let divDrag = $("#idDrag");
+      let codeAreaCol = $("#codeAreaCol");
+      let messagesCol = $("#messagesCol");
+      divDrag.mousedown(function (event) {
+        // divDrag.css("position", "absolute")
+        divDrag.css("zIndex", "1000");
+        document.body.append(divDrag);
 
-      function moveAt(pageX, pageY) {
-        let codeAreaHeight = pageY-dragAreaYBegin
-        let yOffset = 10 // px
-        let codeAreaHeightMiddleMin = codeAreaHeightMiddle - yOffset
-        let codeAreaHeightMiddleMax = codeAreaHeightMiddle + yOffset
-        codeAreaHeight = (codeAreaHeight < codeAreaHeightMin)? codeAreaHeightMin : codeAreaHeight;
-        codeAreaHeight = (codeAreaHeight > codeAreaHeightMax)? codeAreaHeightMax : codeAreaHeight;
+        function moveAt(pageX, pageY) {
+          let codeAreaHeight = pageY - dragAreaYBegin;
+          let yOffset = 10; // px
+          let codeAreaHeightMiddleMin = codeAreaHeightMiddle - yOffset;
+          let codeAreaHeightMiddleMax = codeAreaHeightMiddle + yOffset;
+          codeAreaHeight =
+            codeAreaHeight < codeAreaHeightMin
+              ? codeAreaHeightMin
+              : codeAreaHeight;
+          codeAreaHeight =
+            codeAreaHeight > codeAreaHeightMax
+              ? codeAreaHeightMax
+              : codeAreaHeight;
 
-        if (codeAreaHeightMiddleMin < codeAreaHeight && codeAreaHeight < codeAreaHeightMiddleMax) {
-          codeAreaHeight = codeAreaHeightMiddle
+          if (
+            codeAreaHeightMiddleMin < codeAreaHeight &&
+            codeAreaHeight < codeAreaHeightMiddleMax
+          ) {
+            codeAreaHeight = codeAreaHeightMiddle;
+          }
+          codeAreaHeight =
+            codeAreaHeight > codeAreaHeightMax
+              ? codeAreaHeightMax
+              : codeAreaHeight;
+          let messagesHeight = dragAreaHeight - codeAreaHeight;
+          codeAreaCol.css("height", codeAreaHeight);
+          messagesCol.css("height", messagesHeight);
         }
-        codeAreaHeight = (codeAreaHeight > codeAreaHeightMax)? codeAreaHeightMax : codeAreaHeight;
-        let messagesHeight = dragAreaHeight - codeAreaHeight
-        codeAreaCol.css("height", codeAreaHeight)
-        messagesCol.css("height", messagesHeight)
-      }
 
-      // move our absolutely positioned ball under the pointer
-      moveAt(event.pageX, event.pageY);
-
-      function onMouseMove(event) {
-        $("")
+        // move our absolutely positioned ball under the pointer
         moveAt(event.pageX, event.pageY);
-      }
 
-      // (2) move the ball on mousemove
-      document.addEventListener('mousemove', onMouseMove);
+        function onMouseMove(event) {
+          $("");
+          moveAt(event.pageX, event.pageY);
+        }
 
-      divDrag.mouseup(function() {
-        document.removeEventListener("mousemove", onMouseMove)
-        divDrag.mouseup(null)
-      })
-    })
-    divDrag.on("dragstart", function() {
-      return false;
-    })
+        // (2) move the ball on mousemove
+        document.addEventListener("mousemove", onMouseMove);
 
-  </script>
-</body>
+        divDrag.mouseup(function () {
+          document.removeEventListener("mousemove", onMouseMove);
+          divDrag.mouseup(null);
+        });
+      });
+      divDrag.on("dragstart", function () {
+        return false;
+      });
+    </script>
+  </body>
 </html>
