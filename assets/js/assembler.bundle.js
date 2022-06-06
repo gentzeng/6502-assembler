@@ -31562,6 +31562,10 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  return false;
 	}
 
+	function stripLeadingDollarSign(string) {
+	  return string.replace(/^\$/, "");
+	}
+
 	class Debugger {
 	  constructor() {}
 	  toggle() {
@@ -32289,7 +32293,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 	LabelEntry.prototype.toString = function () {
-	  return "LabelEntry      : " + this.value;
+	  return (
+	    "      LabelEntry           at line " +
+	    this.lineNumber.toString().padStart(4, " ") +
+	    "\n                " +
+	    this.value
+	  );
 	};
 
 	class ByteEntry extends MemoryEntry {
@@ -32414,7 +32423,9 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    let { label, highLowMark } = handleHighLowLabel.bind(this)(memoryEntry);
 
 	    let labelAddress = this[label];
+
 	    let labelAddressWord = labelAddress.word;
+
 	    let lineNumber = memoryEntry.lineNumber;
 	    if (label === labelAddressWord) {
 	      throw "Call insertLabelAddresses() only after calling scanLabels() and compileLines()!";
@@ -32471,9 +32482,11 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 	LabelAddresses.prototype.toString = function () {
+	  let ret = "";
 	  Object.entries(this).forEach(([label, labelAddress]) => {
-	    console.log(label + " : " + labelAddress.toString() + "\n");
+	    ret += label + " : " + labelAddress.toString() + "\n";
 	  });
+	  return ret;
 	};
 
 	class LabelAddress {
@@ -32483,9 +32496,41 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	  }
 	}
 	LabelAddress.prototype.toString = function () {
+	  if (typeof this.word === "string") {
+	    return "line " + this.lineNumber + ": " + this.word;
+	  }
 	  return (
 	    "line " + this.lineNumber + ": 0x" + this.word.toString(16).padStart(4, 0)
 	  );
+	};
+
+	class LabelAddressEquLabelPlusAddr {
+	  constructor(label, word, lineNumber) {
+	    this.label = label;
+	    this.word = word;
+	    this.lineNumber = lineNumber;
+	  }
+	}
+	LabelAddressEquLabelPlusAddr.prototype.toString = function () {
+	  return (
+	    "line " +
+	    this.lineNumber +
+	    ": " +
+	    this.label +
+	    " + 0x" +
+	    this.word.toString(16).padStart(4, 0)
+	  );
+	};
+
+	class LabelAddressEquLabelPlusLabel {
+	  constructor(labelA, labelB, lineNumber) {
+	    this.labelA = labelA;
+	    this.labelB = labelB;
+	    this.lineNumber = lineNumber;
+	  }
+	}
+	LabelAddressEquLabelPlusLabel.prototype.toString = function () {
+	  return "line " + this.lineNumber + ": " + this.labelA + " + " + this.labelB;
 	};
 
 	class Param {
@@ -32752,12 +32797,23 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	    if (this.#isLabel()) {
 	      let label = this.name;
+
 	      if (!(label in this.labelAddresses)) {
 	        raiseLabelError(this.lineNumber, "Label '" + label + "' not existing");
 	        return;
 	      }
 
-	      let labelAddress = this.labelAddresses[label].word;
+	      let labelAddressEntry = this.labelAddresses[label];
+	      let labelAddress = null;
+
+	      if (labelAddressEntry instanceof LabelAddressEquLabelPlusAddr || labelAddressEntry instanceof LabelAddressEquLabelPlusLabel) {
+	        this.memory.pushByte(new LabelEntry(label, this.lineNumber));
+	        return 1; // for lineLen/codeLen
+	      }
+	      if (labelAddressEntry instanceof LabelAddress) {
+	        labelAddress = labelAddressEntry.word;
+	      }
+
 	      if (labelAddress === label) {
 	        //labelAddress will be inserted after compileLines()
 	        this.memory.pushByte(new LabelEntry(label, this.lineNumber));
@@ -33150,7 +33206,10 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.regExp = {
 	      addressOnly: /^\*[\s]*=[\s]*([\$]?[0-9a-f]*)$/,
 	      label: /^(\w+):.*$/,
-	      labelWithEquAddrOnly: /^\w+:\s+(equ|EQU)\s+(\$[0-9a-f]+).*/,
+	      labelEquAddrOnly: /^\w+:\s+(equ|EQU)\s+(\$[0-9a-f]+).*/,
+	      labelEquLabelPlusAddr: /^\w+:\s+(equ|EQU)\s+(\w+)\s*\+\s*(\$[0-9a-f]+).*/,
+	      labelEquAddrPlusLabel: /^\w+:\s+(equ|EQU)\s+(\$[0-9a-f]+)\s*\+\s*(\w+).*/,
+	      labelEquLabelPlusLabel: /^\w+:\s+(equ|EQU)\s+(\w+)\s*\+\s*(\w+).*/,
 	      commandWithLeadLabel: /^\w+:\s*(\w+)\s*.*$/,
 	      command: /^(\w\w\w)\s*.*$/,
 	      paramWithLeadLabel: /^\w+:\s*\w+\s+([-]?.*?)/,
@@ -33172,7 +33231,6 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      }
 	      // Use label as Address provisionaly => will be read correctly later!
 	      labelAddresses[label] = new LabelAddress(label, this.number);
-	      console.log(label, labelAddresses[label]);
 	    }
 	    return;
 	  }
@@ -33185,7 +33243,57 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      memory.defaultCodePC = this.address;
 	      return -1; // to set lineBeforeThisWasAddressOnly
 	    }
-	    if (this.#isLabel()) {
+	    if (this.#isLabelEquAddrPlusLabel()) {
+	      let plusAddress = stripLeadingDollarSign(this.addressEquAddrPlusLabel);
+	      plusAddress = parseInt(plusAddress, 16);
+
+	      const plusLabel = this.labelEquAddrPlusLabel;
+	      
+	      this.labelAddresses[this.label] = new LabelAddressEquLabelPlusAddr(
+	        plusLabel,
+	        plusAddress,
+	        this.number
+	      );
+	      return 0; // lineLen = 0
+	    }
+	    if (this.#isLabelEquAddrOnly()) {
+	      let address = stripLeadingDollarSign(this.addressEquAddrOnly);
+	      address = parseInt(address, 16);
+	      this.labelAddresses[this.label] = new LabelAddress(address, this.number);
+	      return 0; // lineLen = 0
+	    }
+	    if (this.#isLabelEquLabelPlusAddr()) {
+	      let plusAddress = stripLeadingDollarSign(this.addressEquLabelPlusAddr);
+	      plusAddress = parseInt(plusAddress, 16);
+
+	      const plusLabel = this.labelEquLabelPlusAddr;
+
+	      this.labelAddresses[this.label] = new LabelAddressEquLabelPlusAddr(
+	        plusLabel,
+	        plusAddress,
+	        this.number
+	      );
+	      return 0; // lineLen = 0
+	    }
+	    
+	    if (this.#isLabelEquLabelPlusLabel()) {
+	      const labelA = this.labelAEquLabelPlusLabel;
+	      const labelB = this.labelBEquLabelPlusLabel;
+
+	      this.labelAddresses[this.label] = new LabelAddressEquLabelPlusLabel(
+	        labelA,
+	        labelB,
+	        this.number
+	      );
+	      return 0; // lineLen = 0
+	    }
+	    if (
+	      this.#isLabel() &&
+	      !this.#isLabelEquAddrOnly() &&
+	      !this.#isLabelEquLabelPlusAddr() &&
+	      !this.#isLabelEquAddrPlusLabel() &&
+	      !this.#isLabelEquLabelPlusLabel()
+	    ) {
 	      this.labelAddresses[this.label] = new LabelAddress(
 	        memory.defaultCodePC,
 	        this.number
@@ -33200,42 +33308,84 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      return 0; // lineLen = 0
 	    }
 
-	    if (commandName in Command.opCodes) {
-	      let command = new Command(commandName, this.number);
-
-	      let param = new ParamFactory().create({
-	        name: this.paramName,
-	        lineNumber: this.number,
-	        labelAddresses: this.labelAddresses,
-	        commandName: commandName,
-	        memory: memory,
-	      });
-
-	      return command.compileOpCode(param, memory, lineBeforeThisWasAddressOnly);
+	    if (!(commandName in Command.opCodes)) {
+	      raiseSyntaxError(this.number, "Command '" + commandName + "' undefined");
+	      return 0;
 	    }
-	    raiseSyntaxError(this.number, "Command '" + commandName + "' undefined");
-	    return 0;
+
+	    let command = new Command(commandName, this.number);
+
+	    let param = new ParamFactory().create({
+	      name: this.paramName,
+	      lineNumber: this.number,
+	      labelAddresses: this.labelAddresses,
+	      commandName: commandName,
+	      memory: memory,
+	    });
+
+	    return command.compileOpCode(param, memory, lineBeforeThisWasAddressOnly);
 	  }
 	  get address() {
-	    let addr = this.#extract(this.regExp.addressOnly);
+	    let addr = this.#extract({ regExp: this.regExp.addressOnly });
 	    addr = this.#addrToHexOrDec(addr);
 	    return addr;
 	  }
 	  get label() {
-	    return this.#extract(this.regExp.label);
+	    return this.#extract({ regExp: this.regExp.label });
 	  }
-	  get addressFromlabelWithEquAddrOnly() {
-	    return this.#extract(this.regExp.labelWithEquAddrOnly);
+	  get addressEquAddrOnly() {
+	    return this.#extract({
+	      regExp: this.regExp.labelEquAddrOnly,
+	      position: "$2",
+	    });
+	  }
+	  get labelEquLabelPlusAddr() {
+	    return this.#extract({
+	      regExp: this.regExp.labelEquLabelPlusAddr,
+	      position: "$2",
+	    });
+	  }
+	  get addressEquLabelPlusAddr() {
+	    return this.#extract({
+	      regExp: this.regExp.labelEquLabelPlusAddr,
+	      position: "$3",
+	    });
+	  }
+	  get labelEquAddrPlusLabel() {
+	    return this.#extract({
+	      regExp: this.regExp.labelEquAddrPlusLabel,
+	      position: "$3",
+	    });
+	  }
+	  get addressEquAddrPlusLabel() {
+	    return this.#extract({
+	      regExp: this.regExp.labelEquAddrPlusLabel,
+	      position: "$2",
+	    });
+	  }
+	  get labelAEquLabelPlusLabel() {
+	    return this.#extract({
+	      regExp: this.regExp.labelEquLabelPlusLabel,
+	      position: "$2",
+	    });
+	  }
+	  get labelBEquLabelPlusLabel() {
+	    return this.#extract({
+	      regExp: this.regExp.labelEquLabelPlusLabel,
+	      position: "$3",
+	    });
 	  }
 	  get commandName() {
 	    let lineContent = this.content;
 	    let commandName = "";
 	    if (lineContent.match(this.regExp.commandWithLeadLabel)) {
-	      commandName = this.#extract(
-	        this.regExp.commandWithLeadLabel
-	      ).toUpperCase();
+	      commandName = this.#extract({
+	        regExp: this.regExp.commandWithLeadLabel,
+	      }).toUpperCase();
 	    } else if (lineContent.match(this.regExp.command)) {
-	      commandName = this.#extract(this.regExp.command).toUpperCase();
+	      commandName = this.#extract({
+	        regExp: this.regExp.command,
+	      }).toUpperCase();
 	    } else {
 	      raiseSyntaxError(
 	        this.number,
@@ -33248,12 +33398,14 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    let lineContent = this.content;
 	    let paramName = "";
 	    if (lineContent.match(this.regExp.paramWithLeadLabel)) {
-	      paramName = this.#extract(this.regExp.paramWithLeadLabel).replace(
+	      paramName = this.#extract({
+	        regExp: this.regExp.paramWithLeadLabel,
+	      }).replace(/[ ]/g, "");
+	    } else if (lineContent.match(this.regExp.param)) {
+	      paramName = this.#extract({ regExp: this.regExp.param }).replace(
 	        /[ ]/g,
 	        ""
 	      );
-	    } else if (lineContent.match(this.regExp.param)) {
-	      paramName = this.#extract(this.regExp.param).replace(/[ ]/g, "");
 	    }
 	    return paramName;
 	  }
@@ -33283,8 +33435,26 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	    return false;
 	  }
-	  #isLabelWithEquAddrOnly() {
-	    if (this.content.match(this.regExp.labelWithEquAddrOnly)) {
+	  #isLabelEquAddrOnly() {
+	    if (this.content.match(this.regExp.labelEquAddrOnly)) {
+	      return true;
+	    }
+	    return false;
+	  }
+	  #isLabelEquLabelPlusAddr() {
+	    if (this.content.match(this.regExp.labelEquLabelPlusAddr)) {
+	      return true;
+	    }
+	    return false;
+	  }
+	  #isLabelEquAddrPlusLabel() {
+	    if (this.content.match(this.regExp.labelEquAddrPlusLabel)) {
+	      return true;
+	    }
+	    return false;
+	  }
+	  #isLabelEquLabelPlusLabel() {
+	    if (this.content.match(this.regExp.labelEquLabelPlusLabel)) {
 	      return true;
 	    }
 	    return false;
@@ -33295,12 +33465,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }
 	    return false;
 	  }
-	  #extract(regExp) {
-	    return this.content.replace(regExp, "$1");
+	  #extract({ regExp = /^$/, position = "$1" } = {}) {
+	    return this.content.replace(regExp, position);
 	  }
 	  #addrToHexOrDec(addr) {
 	    if (addr[0] == "$") {
-	      addr = addr.replace(/^\$/, ""); //strip leading dollar sign
+	      addr = stripLeadingDollarSign(addr);
 	      addr = parseInt(addr, 16);
 	    } else {
 	      addr = parseInt(addr, 10);
@@ -33357,6 +33527,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      codeLine.scanLabel(this.labelAddresses);
 	    });
 	    this.labelAddresses.printLabelCount();
+
 	    return this;
 	  }
 
@@ -33379,6 +33550,59 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    this.memory.writeByte(0xa28, new ByteEntry(0x00, -1));
 
 	    return this;
+	  }
+
+	  resolveEquLabelAddresses() {
+	    if (this.noCode()) {
+	      return this;
+	    }
+
+	    Object.entries(this.labelAddresses).forEach(([label, labelAddress]) => {
+	      if (labelAddress instanceof LabelAddress) {
+	        return;
+	      }
+	      if (
+	        labelAddress instanceof LabelAddressEquLabelPlusAddr ||
+	        labelAddress instanceof LabelAddressEquLabelPlusLabel
+	      ) {
+	        resolveEquLabelAddress.bind(this)(label, " ");
+	        return;
+	      }
+	    });
+
+	    return this;
+
+	    //helper
+	    function resolveEquLabelAddress(label, offset) {
+	      const labelAddresses = this.labelAddresses;
+	      const labelAddress = labelAddresses[label];
+
+	      if (labelAddress instanceof LabelAddress) {
+	        return labelAddress.word;
+	      }
+	      if (labelAddress instanceof LabelAddressEquLabelPlusAddr) {
+	        const childLabel = labelAddress.label;
+	        let word = resolveEquLabelAddress.bind(this)(childLabel, offset + " ");
+	        word += labelAddress.word;
+	        labelAddresses[label] = new LabelAddress(word, this.number);
+	        return word;
+	      }
+	      if (labelAddress instanceof LabelAddressEquLabelPlusLabel) {
+	        const childLabelA = labelAddress.labelA;
+	        const childLabelB = labelAddress.labelB;
+	        let wordA = resolveEquLabelAddress.bind(this)(
+	          childLabelA,
+	          offset + " "
+	        );
+	        let wordB = resolveEquLabelAddress.bind(this)(
+	          childLabelB,
+	          offset + " "
+	        );
+	        const word = wordA + wordB;
+	        labelAddresses[label] = new LabelAddress(word, this.number);
+	        return word;
+	      }
+	    }
 	  }
 
 	  insertLabelAddressesToMemory() {
@@ -35651,13 +35875,12 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	 */
 	function keyPress(e) {
 	  if (!exports.codeRunning) {
-	    return; 
+	    return;
 	  }
 	  if (typeof window.event != "undefined") {
 	    e = window.event;
 	  }
 	  if (e.type == "keypress") {
-	    console.log("joooooooooooooooo");
 	    exports.memory.writeByte(0xff, new ByteEntry(e.which, 0xff));
 	  }
 	}
@@ -35783,7 +36006,11 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    return;
 	  }
 
-	  compiler.scanLabels().compile().insertLabelAddressesToMemory();
+	  compiler
+	    .scanLabels()
+	    .compile()
+	    .resolveEquLabelAddresses()
+	    .insertLabelAddressesToMemory();
 
 	  if (exports.error) {
 	    resetEverything();

@@ -1,7 +1,12 @@
 import { Command } from "./compiler-command";
-import { LabelAddress } from "./compiler-labelAdress";
+import {
+  LabelAddress,
+  LabelAddressEquLabelPlusAddr,
+  LabelAddressEquLabelPlusLabel,
+} from "./compiler-labelAdress";
 import { ParamFactory } from "./compiler-param";
 import { raiseSyntaxError, raiseLabelError, raiseRangeError } from "./message";
+import { stripLeadingDollarSign } from "./helper";
 
 export class CodeLine {
   constructor(content, number) {
@@ -11,7 +16,10 @@ export class CodeLine {
     this.regExp = {
       addressOnly: /^\*[\s]*=[\s]*([\$]?[0-9a-f]*)$/,
       label: /^(\w+):.*$/,
-      labelWithEquAddrOnly: /^\w+:\s+(equ|EQU)\s+(\$[0-9a-f]+).*/,
+      labelEquAddrOnly: /^\w+:\s+(equ|EQU)\s+(\$[0-9a-f]+).*/,
+      labelEquLabelPlusAddr: /^\w+:\s+(equ|EQU)\s+(\w+)\s*\+\s*(\$[0-9a-f]+).*/,
+      labelEquAddrPlusLabel: /^\w+:\s+(equ|EQU)\s+(\$[0-9a-f]+)\s*\+\s*(\w+).*/,
+      labelEquLabelPlusLabel: /^\w+:\s+(equ|EQU)\s+(\w+)\s*\+\s*(\w+).*/,
       commandWithLeadLabel: /^\w+:\s*(\w+)\s*.*$/,
       command: /^(\w\w\w)\s*.*$/,
       paramWithLeadLabel: /^\w+:\s*\w+\s+([-]?.*?)/,
@@ -33,7 +41,6 @@ export class CodeLine {
       }
       // Use label as Address provisionaly => will be read correctly later!
       labelAddresses[label] = new LabelAddress(label, this.number);
-      console.log(label, labelAddresses[label]);
     }
     return;
   }
@@ -46,7 +53,57 @@ export class CodeLine {
       memory.defaultCodePC = this.address;
       return -1; // to set lineBeforeThisWasAddressOnly
     }
-    if (this.#isLabel()) {
+    if (this.#isLabelEquAddrPlusLabel()) {
+      let plusAddress = stripLeadingDollarSign(this.addressEquAddrPlusLabel);
+      plusAddress = parseInt(plusAddress, 16);
+
+      const plusLabel = this.labelEquAddrPlusLabel;
+
+      this.labelAddresses[this.label] = new LabelAddressEquLabelPlusAddr(
+        plusLabel,
+        plusAddress,
+        this.number
+      );
+      return 0; // lineLen = 0
+    }
+    if (this.#isLabelEquAddrOnly()) {
+      let address = stripLeadingDollarSign(this.addressEquAddrOnly);
+      address = parseInt(address, 16);
+      this.labelAddresses[this.label] = new LabelAddress(address, this.number);
+      return 0; // lineLen = 0
+    }
+    if (this.#isLabelEquLabelPlusAddr()) {
+      let plusAddress = stripLeadingDollarSign(this.addressEquLabelPlusAddr);
+      plusAddress = parseInt(plusAddress, 16);
+
+      const plusLabel = this.labelEquLabelPlusAddr;
+
+      this.labelAddresses[this.label] = new LabelAddressEquLabelPlusAddr(
+        plusLabel,
+        plusAddress,
+        this.number
+      );
+      return 0; // lineLen = 0
+    }
+
+    if (this.#isLabelEquLabelPlusLabel()) {
+      const labelA = this.labelAEquLabelPlusLabel;
+      const labelB = this.labelBEquLabelPlusLabel;
+
+      this.labelAddresses[this.label] = new LabelAddressEquLabelPlusLabel(
+        labelA,
+        labelB,
+        this.number
+      );
+      return 0; // lineLen = 0
+    }
+    if (
+      this.#isLabel() &&
+      !this.#isLabelEquAddrOnly() &&
+      !this.#isLabelEquLabelPlusAddr() &&
+      !this.#isLabelEquAddrPlusLabel() &&
+      !this.#isLabelEquLabelPlusLabel()
+    ) {
       this.labelAddresses[this.label] = new LabelAddress(
         memory.defaultCodePC,
         this.number
@@ -61,42 +118,84 @@ export class CodeLine {
       return 0; // lineLen = 0
     }
 
-    if (commandName in Command.opCodes) {
-      let command = new Command(commandName, this.number);
-
-      let param = new ParamFactory().create({
-        name: this.paramName,
-        lineNumber: this.number,
-        labelAddresses: this.labelAddresses,
-        commandName: commandName,
-        memory: memory,
-      });
-
-      return command.compileOpCode(param, memory, lineBeforeThisWasAddressOnly);
+    if (!(commandName in Command.opCodes)) {
+      raiseSyntaxError(this.number, "Command '" + commandName + "' undefined");
+      return 0;
     }
-    raiseSyntaxError(this.number, "Command '" + commandName + "' undefined");
-    return 0;
+
+    let command = new Command(commandName, this.number);
+
+    let param = new ParamFactory().create({
+      name: this.paramName,
+      lineNumber: this.number,
+      labelAddresses: this.labelAddresses,
+      commandName: commandName,
+      memory: memory,
+    });
+
+    return command.compileOpCode(param, memory, lineBeforeThisWasAddressOnly);
   }
   get address() {
-    let addr = this.#extract(this.regExp.addressOnly);
+    let addr = this.#extract({ regExp: this.regExp.addressOnly });
     addr = this.#addrToHexOrDec(addr);
     return addr;
   }
   get label() {
-    return this.#extract(this.regExp.label);
+    return this.#extract({ regExp: this.regExp.label });
   }
-  get addressFromLabelWithEquAddrOnly() {
-    return this.#extract(this.regExp.labelWithEquAddrOnly);
+  get addressEquAddrOnly() {
+    return this.#extract({
+      regExp: this.regExp.labelEquAddrOnly,
+      position: "$2",
+    });
+  }
+  get labelEquLabelPlusAddr() {
+    return this.#extract({
+      regExp: this.regExp.labelEquLabelPlusAddr,
+      position: "$2",
+    });
+  }
+  get addressEquLabelPlusAddr() {
+    return this.#extract({
+      regExp: this.regExp.labelEquLabelPlusAddr,
+      position: "$3",
+    });
+  }
+  get labelEquAddrPlusLabel() {
+    return this.#extract({
+      regExp: this.regExp.labelEquAddrPlusLabel,
+      position: "$3",
+    });
+  }
+  get addressEquAddrPlusLabel() {
+    return this.#extract({
+      regExp: this.regExp.labelEquAddrPlusLabel,
+      position: "$2",
+    });
+  }
+  get labelAEquLabelPlusLabel() {
+    return this.#extract({
+      regExp: this.regExp.labelEquLabelPlusLabel,
+      position: "$2",
+    });
+  }
+  get labelBEquLabelPlusLabel() {
+    return this.#extract({
+      regExp: this.regExp.labelEquLabelPlusLabel,
+      position: "$3",
+    });
   }
   get commandName() {
     let lineContent = this.content;
     let commandName = "";
     if (lineContent.match(this.regExp.commandWithLeadLabel)) {
-      commandName = this.#extract(
-        this.regExp.commandWithLeadLabel
-      ).toUpperCase();
+      commandName = this.#extract({
+        regExp: this.regExp.commandWithLeadLabel,
+      }).toUpperCase();
     } else if (lineContent.match(this.regExp.command)) {
-      commandName = this.#extract(this.regExp.command).toUpperCase();
+      commandName = this.#extract({
+        regExp: this.regExp.command,
+      }).toUpperCase();
     } else {
       raiseSyntaxError(
         this.number,
@@ -109,12 +208,14 @@ export class CodeLine {
     let lineContent = this.content;
     let paramName = "";
     if (lineContent.match(this.regExp.paramWithLeadLabel)) {
-      paramName = this.#extract(this.regExp.paramWithLeadLabel).replace(
+      paramName = this.#extract({
+        regExp: this.regExp.paramWithLeadLabel,
+      }).replace(/[ ]/g, "");
+    } else if (lineContent.match(this.regExp.param)) {
+      paramName = this.#extract({ regExp: this.regExp.param }).replace(
         /[ ]/g,
         ""
       );
-    } else if (lineContent.match(this.regExp.param)) {
-      paramName = this.#extract(this.regExp.param).replace(/[ ]/g, "");
     }
     return paramName;
   }
@@ -144,8 +245,26 @@ export class CodeLine {
     }
     return false;
   }
-  #isLabelWithEquAddrOnly() {
-    if (this.content.match(this.regExp.labelWithEquAddrOnly)) {
+  #isLabelEquAddrOnly() {
+    if (this.content.match(this.regExp.labelEquAddrOnly)) {
+      return true;
+    }
+    return false;
+  }
+  #isLabelEquLabelPlusAddr() {
+    if (this.content.match(this.regExp.labelEquLabelPlusAddr)) {
+      return true;
+    }
+    return false;
+  }
+  #isLabelEquAddrPlusLabel() {
+    if (this.content.match(this.regExp.labelEquAddrPlusLabel)) {
+      return true;
+    }
+    return false;
+  }
+  #isLabelEquLabelPlusLabel() {
+    if (this.content.match(this.regExp.labelEquLabelPlusLabel)) {
       return true;
     }
     return false;
@@ -156,12 +275,12 @@ export class CodeLine {
     }
     return false;
   }
-  #extract(regExp) {
-    return this.content.replace(regExp, "$1");
+  #extract({ regExp = /^$/, position = "$1" } = {}) {
+    return this.content.replace(regExp, position);
   }
   #addrToHexOrDec(addr) {
     if (addr[0] == "$") {
-      addr = addr.replace(/^\$/, ""); //strip leading dollar sign
+      addr = stripLeadingDollarSign(addr);
       addr = parseInt(addr, 16);
     } else {
       addr = parseInt(addr, 10);

@@ -7,6 +7,11 @@ import {
 } from "./message";
 
 import { WordEntry, LabelEntry, ByteEntry } from "./memory";
+import {
+  LabelAddress,
+  LabelAddressEquLabelPlusAddr,
+  LabelAddressEquLabelPlusLabel,
+} from "./compiler-labelAdress";
 
 export class Param {
   static regExps = {
@@ -272,12 +277,26 @@ export class Param {
     }
     if (this.#isLabel()) {
       let label = this.name;
+
       if (!(label in this.labelAddresses)) {
         raiseLabelError(this.lineNumber, "Label '" + label + "' not existing");
         return;
       }
 
-      let labelAddress = this.labelAddresses[label].word;
+      let labelAddressEntry = this.labelAddresses[label];
+      let labelAddress = null;
+
+      if (
+        labelAddressEntry instanceof LabelAddressEquLabelPlusAddr ||
+        labelAddressEntry instanceof LabelAddressEquLabelPlusLabel
+      ) {
+        this.memory.pushByte(new LabelEntry(label, this.lineNumber));
+        return 1; // for lineLen/codeLen
+      }
+      if (labelAddressEntry instanceof LabelAddress) {
+        labelAddress = labelAddressEntry.word;
+      }
+
       if (labelAddress === label) {
         //labelAddress will be inserted after compileLines()
         this.memory.pushByte(new LabelEntry(label, this.lineNumber));

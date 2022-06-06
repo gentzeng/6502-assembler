@@ -257,7 +257,12 @@ export class LabelEntry extends MemoryEntry {
   }
 }
 LabelEntry.prototype.toString = function () {
-  return "LabelEntry      : " + this.value;
+  return (
+    "      LabelEntry           at line " +
+    this.lineNumber.toString().padStart(4, " ") +
+    "\n                " +
+    this.value
+  );
 };
 
 export class ByteEntry extends MemoryEntry {

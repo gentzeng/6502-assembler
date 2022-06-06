@@ -41,7 +41,9 @@ export class LabelAddresses {
     let { label, highLowMark } = handleHighLowLabel.bind(this)(memoryEntry);
 
     let labelAddress = this[label];
+
     let labelAddressWord = labelAddress.word;
+
     let lineNumber = memoryEntry.lineNumber;
     if (label === labelAddressWord) {
       throw "Call insertLabelAddresses() only after calling scanLabels() and compileLines()!";
@@ -98,9 +100,11 @@ export class LabelAddresses {
   }
 }
 LabelAddresses.prototype.toString = function () {
+  let ret = "";
   Object.entries(this).forEach(([label, labelAddress]) => {
-    console.log(label + " : " + labelAddress.toString() + "\n");
+    ret += label + " : " + labelAddress.toString() + "\n";
   });
+  return ret;
 };
 
 export class LabelAddress {
@@ -110,7 +114,39 @@ export class LabelAddress {
   }
 }
 LabelAddress.prototype.toString = function () {
+  if (typeof this.word === "string") {
+    return "line " + this.lineNumber + ": " + this.word;
+  }
   return (
     "line " + this.lineNumber + ": 0x" + this.word.toString(16).padStart(4, 0)
   );
+};
+
+export class LabelAddressEquLabelPlusAddr {
+  constructor(label, word, lineNumber) {
+    this.label = label;
+    this.word = word;
+    this.lineNumber = lineNumber;
+  }
+}
+LabelAddressEquLabelPlusAddr.prototype.toString = function () {
+  return (
+    "line " +
+    this.lineNumber +
+    ": " +
+    this.label +
+    " + 0x" +
+    this.word.toString(16).padStart(4, 0)
+  );
+};
+
+export class LabelAddressEquLabelPlusLabel {
+  constructor(labelA, labelB, lineNumber) {
+    this.labelA = labelA;
+    this.labelB = labelB;
+    this.lineNumber = lineNumber;
+  }
+}
+LabelAddressEquLabelPlusLabel.prototype.toString = function () {
+  return "line " + this.lineNumber + ": " + this.labelA + " + " + this.labelB;
 };

@@ -1,7 +1,12 @@
 import { Memory, ByteEntry } from "./memory";
 
 import { CodeLine } from "./compiler-codeLine";
-import { LabelAddresses } from "./compiler-labelAdress";
+import {
+  LabelAddresses,
+  LabelAddress,
+  LabelAddressEquLabelPlusAddr,
+  LabelAddressEquLabelPlusLabel,
+} from "./compiler-labelAdress";
 
 export class Compiler {
   constructor(plainCode) {
@@ -39,6 +44,7 @@ export class Compiler {
       codeLine.scanLabel(this.labelAddresses);
     });
     this.labelAddresses.printLabelCount();
+
     return this;
   }
 
@@ -61,6 +67,59 @@ export class Compiler {
     this.memory.writeByte(0xa28, new ByteEntry(0x00, -1));
 
     return this;
+  }
+
+  resolveEquLabelAddresses() {
+    if (this.noCode()) {
+      return this;
+    }
+
+    Object.entries(this.labelAddresses).forEach(([label, labelAddress]) => {
+      if (labelAddress instanceof LabelAddress) {
+        return;
+      }
+      if (
+        labelAddress instanceof LabelAddressEquLabelPlusAddr ||
+        labelAddress instanceof LabelAddressEquLabelPlusLabel
+      ) {
+        resolveEquLabelAddress.bind(this)(label, " ");
+        return;
+      }
+    });
+
+    return this;
+
+    //helper
+    function resolveEquLabelAddress(label, offset) {
+      const labelAddresses = this.labelAddresses;
+      const labelAddress = labelAddresses[label];
+
+      if (labelAddress instanceof LabelAddress) {
+        return labelAddress.word;
+      }
+      if (labelAddress instanceof LabelAddressEquLabelPlusAddr) {
+        const childLabel = labelAddress.label;
+        let word = resolveEquLabelAddress.bind(this)(childLabel, offset + " ");
+        word += labelAddress.word;
+        labelAddresses[label] = new LabelAddress(word, this.number);
+        return word;
+      }
+      if (labelAddress instanceof LabelAddressEquLabelPlusLabel) {
+        const childLabelA = labelAddress.labelA;
+        const childLabelB = labelAddress.labelB;
+        let wordA = resolveEquLabelAddress.bind(this)(
+          childLabelA,
+          offset + " "
+        );
+        let wordB = resolveEquLabelAddress.bind(this)(
+          childLabelB,
+          offset + " "
+        );
+        const word = wordA + wordB;
+        labelAddresses[label] = new LabelAddress(word, this.number);
+        return word;
+      }
+    }
   }
 
   insertLabelAddressesToMemory() {

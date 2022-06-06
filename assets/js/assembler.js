@@ -143,7 +143,11 @@ export function compileCode() {
     return;
   }
 
-  compiler.scanLabels().compile().insertLabelAddressesToMemory();
+  compiler
+    .scanLabels()
+    .compile()
+    .resolveEquLabelAddresses()
+    .insertLabelAddressesToMemory();
 
   if (exports.error) {
     resetEverything();

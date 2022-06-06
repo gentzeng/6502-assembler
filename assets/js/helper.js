@@ -48,3 +48,7 @@ export function isNegative(value) {
   }
   return false;
 }
+
+export function stripLeadingDollarSign(string) {
+  return string.replace(/^\$/, "");
+}
