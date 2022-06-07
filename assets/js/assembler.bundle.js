@@ -31582,6 +31582,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    $("#gotoButton").prop("disabled", true);
 	    if (exports.started) {
 	      //reset highlighting
+	      $(".cm-content").children().eq(exports.lastLineNumber-1).css("background-color", "white");
 	      let lastLine = exports.editor.state.doc.line(exports.lastLineNumber);
 	      exports.editor.dispatch({
 	        changes: {
@@ -32806,7 +32807,10 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      let labelAddressEntry = this.labelAddresses[label];
 	      let labelAddress = null;
 
-	      if (labelAddressEntry instanceof LabelAddressEquLabelPlusAddr || labelAddressEntry instanceof LabelAddressEquLabelPlusLabel) {
+	      if (
+	        labelAddressEntry instanceof LabelAddressEquLabelPlusAddr ||
+	        labelAddressEntry instanceof LabelAddressEquLabelPlusLabel
+	      ) {
 	        this.memory.pushByte(new LabelEntry(label, this.lineNumber));
 	        return 1; // for lineLen/codeLen
 	      }
@@ -33248,7 +33252,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      plusAddress = parseInt(plusAddress, 16);
 
 	      const plusLabel = this.labelEquAddrPlusLabel;
-	      
+
 	      this.labelAddresses[this.label] = new LabelAddressEquLabelPlusAddr(
 	        plusLabel,
 	        plusAddress,
@@ -33275,7 +33279,7 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	      );
 	      return 0; // lineLen = 0
 	    }
-	    
+
 	    if (this.#isLabelEquLabelPlusLabel()) {
 	      const labelA = this.labelAEquLabelPlusLabel;
 	      const labelB = this.labelBEquLabelPlusLabel;
@@ -36059,7 +36063,8 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    n_str = addLeadingSpace(n_str, lineCount.toString().length);
 
 	    const lineNumber = 0x600 + lineNumbersForEditor[n];
-	    return `${fmtToHexBr(lineNumber)} ${n_str}`;
+	    const ret = `${fmtToHexBr(lineNumber)} ${n_str}`;
+	    return ret
 	  };
 
 	  exports.editor.dispatch({
@@ -36339,16 +36344,18 @@ var AssemblerSixFiveOTwo = (function (exports) {
 
 	  function highlightCodeLine(lineNumber) {
 	    let line = exports.editor.state.doc.line(lineNumber);
+	    $(".cm-content").children().eq(lineNumber-1).css("background-color", "#C0C0C0");
 	    let lineText = line.text;
 	    exports.editor.dispatch({
 	      changes: {
 	        from: line.from,
 	        to: line.to,
-	        insert: ">>> " + lineText + " <<<",
+	        insert: lineText,
 	      },
 	    });
 
 	    if (exports.started) {
+	      $(".cm-content").children().eq(exports.lastLineNumber-1).css("background-color", "white");
 	      let lastLine = exports.editor.state.doc.line(exports.lastLineNumber);
 	      exports.editor.dispatch({
 	        changes: {

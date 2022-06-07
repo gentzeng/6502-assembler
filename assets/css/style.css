@@ -247,3 +247,7 @@ body.presentation-mode .debug-info {
   background: #000000;
   cursor: pointer;
 }
+
+.cm-line-activated {
+  background-color: grey;
+}
