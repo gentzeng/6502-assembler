@@ -197,7 +197,7 @@ export function setEditorLineNumbers() {
 
     const lineNumber = 0x600 + lineNumbersForEditor[n];
     const ret = `${fmtToHexBr(lineNumber)} ${n_str}`;
-    return ret
+    return ret;
   };
 
   exports.editor.dispatch({
@@ -482,7 +482,10 @@ export function executeInstruction() {
 
   function highlightCodeLine(lineNumber) {
     let line = exports.editor.state.doc.line(lineNumber);
-    $(".cm-content").children().eq(lineNumber-1).css("background-color", "#C0C0C0")
+    $(".cm-content")
+      .children()
+      .eq(lineNumber - 1)
+      .css("background-color", "#C0C0C0");
     let lineText = line.text;
     exports.editor.dispatch({
       changes: {
@@ -493,7 +496,10 @@ export function executeInstruction() {
     });
 
     if (exports.started) {
-      $(".cm-content").children().eq(exports.lastLineNumber-1).css("background-color", "white")
+      $(".cm-content")
+        .children()
+        .eq(exports.lastLineNumber - 1)
+        .css("background-color", "white");
       let lastLine = exports.editor.state.doc.line(exports.lastLineNumber);
       exports.editor.dispatch({
         changes: {

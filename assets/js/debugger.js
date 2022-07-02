@@ -16,7 +16,10 @@ export class Debugger {
     $("#gotoButton").prop("disabled", true);
     if (exports.started) {
       //reset highlighting
-      $(".cm-content").children().eq(exports.lastLineNumber-1).css("background-color", "white")
+      $(".cm-content")
+        .children()
+        .eq(exports.lastLineNumber - 1)
+        .css("background-color", "white");
       let lastLine = exports.editor.state.doc.line(exports.lastLineNumber);
       exports.editor.dispatch({
         changes: {

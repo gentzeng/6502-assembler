@@ -36491,9 +36491,13 @@ var AssemblerSixFiveOTwo = (function (exports) {
 	    }),
 	  }));
 
+	//buggy
 	$(".code-area").append(exports.editor.dom);
 	exports.editor.contentDOM.onfocus = () => {
-	  stopBinary();
+	  if (exports.codeRunning) {
+	    console.log("stopping!");
+	    stopBinary();
+	  }  
 	};
 
 	$("#realTimeDebugCheckbox").click(
